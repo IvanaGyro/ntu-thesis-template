@@ -91,6 +91,16 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - `\makeverification` uses the file at `\ntusetup{verification}` when it
   exists, and typesets its own letter when it does not. Both paths must keep
   the same page number, watermark, and DOI stamp.
+- The seal is drawn twice by design: `\makewatermark` paints it into every
+  page's background, and `\ntu@makeoverlaywatermark` repaints it in the
+  foreground of the verification page, where an opaque scan would otherwise
+  hide it. That only stays correct because `\ntu@makescanpage` fills the page
+  white first — the official forms are vector PDFs with no background of their
+  own, and without the fill both copies show through at
+  `1-(1-0.25)^2 = 0.4375` instead of `0.25`. Removing the fill silently
+  darkens page `i` alone. Verify by rendering page `i` and a body page and
+  differencing each against a `watermark=false` build; both seals must reach
+  the same peak ink.
 - NTU's format rules (fonts, 12 pt, margins 3/2/3/3, spacing, cover sizes) are
   quoted with their source in `README.md`. Verify against
   <https://www.lib.ntu.edu.tw/doc/cl/THESISSAMPLE.doc> before changing layout.

@@ -822,6 +822,20 @@
 \newcommand{\ntu@makescanpage}[1]{
   \AddToShipoutPictureBG*{
     \begin{tikzpicture}[remember picture, overlay]
+      % 先鋪一層不透明白底，再放審定書。向量 PDF（例如教務處發布的空白審定書）
+      % 不會自己畫背景，少了白底，\makewatermark 畫在頁面背景的校徽會透出來，
+      % 與前景 \ntu@makeoverlaywatermark 疊成兩層：0.25 的透明度疊兩次等於
+      % 1-(1-0.25)^2 = 0.4375，看起來就比其他頁深。點陣掃描檔本身不透明，
+      % 補上白底對它沒有任何影響。keepaspectratio 留下的邊也一併蓋成白色。
+      %
+      % Vector PDFs (such as the blank forms published by 教務處) paint no
+      % background of their own. Without this rectangle the background seal
+      % from \makewatermark shows through and compounds with the foreground
+      % overlay — two passes at 0.25 give 1-(1-0.25)^2 = 0.4375 — leaving this
+      % page's watermark visibly darker than every other page. Raster scans are
+      % opaque, so this is a no-op for them. It also whitens the letterbox
+      % margins keepaspectratio may leave.
+      \fill [white] (current page.south west) rectangle (current page.north east);
       \node [inner sep=0pt] at (current page.center)
         {\includegraphics[width=\paperwidth, height=\paperheight, keepaspectratio]{#1}};
     \end{tikzpicture}
