@@ -49,7 +49,11 @@ plt.rcParams.update(
 
 def save(fig: plt.Figure, name: str) -> None:
     path = FIGURES_DIR / name
-    fig.savefig(path, format="pdf")
+    # Without this, matplotlib stamps the current time into the PDF and every
+    # run rewrites all four files, showing up as a dirty working tree even
+    # when the plots are unchanged. Dropping CreationDate makes the output a
+    # pure function of the seed.
+    fig.savefig(path, format="pdf", metadata={"CreationDate": None})
     plt.close(fig)
     print(f"wrote {path.relative_to(FIGURES_DIR.parent)}")
 
