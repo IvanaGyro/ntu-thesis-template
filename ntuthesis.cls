@@ -4,9 +4,10 @@
 % --------------------------------------------------
 % Version       : 1.0
 % Author        : Hsins <hsinspeng@gmail.com>
-% Repository    : https://github.com/Hsins/NTU-Thesis
+% Repository    : https://github.com/Hsins/NTU-Thesis-LaTeX-Template
 % Document      : https://hsins.github.io/NTU-Thesis/
 % Last Updated  : 2020.05.01
+% License       : MIT, Copyright (c) 2017 Hsin-Hsiang Peng — see LICENSE
 %
 % This copy has been extended: a scanned verification letter can replace the
 % typeset one, the cover carries an optional seal watermark and DOI stamp, and

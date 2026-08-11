@@ -69,7 +69,11 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - Never commit a real signed verification letter, a real DOI, a real student
   ID, or a real acknowledgement.
 - Never commit font files. `fonts/**/*.ttf` is gitignored; Times New Roman and
-  標楷體 are proprietary.
+  標楷體 are proprietary. Upstream bundles them; this fork deliberately does not.
+- MIT licensed, derived from
+  [Hsins/NTU-Thesis-LaTeX-Template](https://github.com/Hsins/NTU-Thesis-LaTeX-Template)
+  (MIT, © 2017 Hsin-Hsiang Peng). MIT requires that copyright notice to travel
+  with the work, so `LICENSE` must keep both copyright lines.
 - Comments in `.tex` files are bilingual where they explain a NTU-specific rule,
   Chinese first. Comments in `.py` files are English.
 - Any change to a class option, a `fontset`, or the inclusion order has to be

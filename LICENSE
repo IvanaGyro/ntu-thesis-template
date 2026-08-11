@@ -1,0 +1,44 @@
+MIT License
+
+Copyright (c) 2017 Hsin-Hsiang Peng
+Copyright (c) 2026 Ivana Gyro
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+---
+
+This template is derived from the NTU Thesis LaTeX Template by Hsin-Hsiang
+Peng (Hsins), which is also MIT licensed:
+
+    https://github.com/Hsins/NTU-Thesis-LaTeX-Template
+
+The MIT terms above cover the LaTeX source, the class file, the scripts, and
+the documentation in this repository. They do not extend to material this
+repository merely reproduces:
+
+  - figures/seal.pdf and figures/seal-grayscale.pdf are the National Taiwan
+    University seal, the property of the university.
+  - front/verification-letter.pdf and front/verification-letter-doctor.pdf are
+    official blank forms published by NTU's Office of Academic Affairs
+    (教務處) at https://www.aca.ntu.edu.tw/w/aca/GAADForms.
+
+Fonts are deliberately not bundled. The default font set uses TeX Gyre Termes
+(GUST Font License) and AR PL KaitiM Big5 (Arphic Public License), both
+supplied by TeX Live rather than by this repository. See fonts/README.md.
