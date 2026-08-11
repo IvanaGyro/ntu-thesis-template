@@ -1,0 +1,36 @@
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.xdv
+_minted*/
+*.config.minted
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Compiled thesis (figure PDFs in figures/ stay tracked)
+/main.pdf
+/main-protected.pdf
+
+# Licensed fonts a user drops in for fontset=template. They belong to you, not
+# to this repository — see fonts/README.md.
+/fonts/english/*.ttf
+/fonts/chinese/*.ttf
+
+# Generated NTU TDR form filler (contains submission/personal data)
+/.tdr-upload.js
+
+# Pixi environments and generated fontconfig cache
+/.pixi/

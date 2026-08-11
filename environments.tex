@@ -1,0 +1,95 @@
+% wherelist:
+%   A compact IEEE-like "where" list for explaining symbols after an equation.
+%   The word "where" is printed automatically.
+%
+% Usage:
+%
+%   \begin{equation}
+%   ...
+%   \end{equation}
+%   \begin{wherelist}
+%     \item[$p_i$] is the error rate of the i-th error position;
+%     \item[$e_i$] is 1 if the i-th error occurred and 0 otherwise.
+%   \end{wherelist}
+%
+% Optional arguments:
+%
+%   \begin{wherelist}[<left indent>][<gap between label and explanation>]
+%
+% Defaults:
+%
+%   \begin{wherelist}              % equivalent to [\parindent][1em]
+%   \begin{wherelist}[1em]         % equivalent to [1em][1em]
+%   \begin{wherelist}[1em][0.75em] % custom indent and custom label gap
+%
+\NewDocumentEnvironment{wherelist}{O{\parindent} O{1em} +b}{%
+  \begingroup
+
+  % Local spacing settings.
+  %
+  % This tightens the space between the preceding displayed equation and
+  % the printed word "where". Make this less negative if the gap is too tight,
+  % or more negative if the gap is still too large.
+  \def\wherelistEquationToWhereCorrection{-0.45\baselineskip}%
+
+  % This removes the extra paragraph/list gap between "where" and the items.
+  \def\wherelistWhereToItemsCorrection{-\parskip}%
+
+  % Local readable aliases for TeX scratch dimensions.
+  \dimendef\wherelistLabelWidth=0
+  \dimendef\wherelistCandidateWidth=2
+
+  \wherelistLabelWidth=0pt
+  \wherelistCandidateWidth=0pt
+
+  % First pass: measure the widest optional label in \item[...].
+  {%
+    \RenewDocumentCommand{\item}{o}{%
+      \IfNoValueTF{##1}{%
+        \wherelistCandidateWidth=0pt
+      }{%
+        \settowidth{\wherelistCandidateWidth}{##1}%
+      }%
+      \ifdim\wherelistCandidateWidth>\wherelistLabelWidth
+        \global\wherelistLabelWidth=\wherelistCandidateWidth
+      \fi
+      \ignorespaces
+    }%
+    \setbox0=\vbox{%
+      \hsize=\maxdimen
+      \parindent=0pt
+      #3%
+    }%
+  }%
+
+  \par
+  \nopagebreak[4]%
+  \vspace{\wherelistEquationToWhereCorrection}%
+  \nopagebreak[4]%
+  \noindent where%
+  \par\nobreak
+  \vspace{\wherelistWhereToItemsCorrection}%
+  \nopagebreak[4]%
+
+  % Second pass: typeset the real list using the measured label width.
+  \begin{list}{}{%
+    \setlength{\labelwidth}{\wherelistLabelWidth}%
+    \setlength{\labelsep}{#2}%
+    \setlength{\leftmargin}{\dimexpr #1 + \wherelistLabelWidth + #2\relax}%
+    \setlength{\itemindent}{0pt}%
+    \setlength{\listparindent}{0pt}%
+    \setlength{\parsep}{0pt}%
+    \setlength{\itemsep}{0pt}%
+    \setlength{\topsep}{0pt}%
+    \setlength{\partopsep}{0pt}%
+    \setlength{\rightmargin}{0pt}%
+    \renewcommand{\makelabel}[1]{##1\hfil}%
+  }%
+  #3%
+  \end{list}%
+
+  \endgroup
+  \par
+  \csname @endpetrue\endcsname
+  \ignorespacesafterend
+}{}

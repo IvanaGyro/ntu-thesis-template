@@ -1,0 +1,32 @@
+% !TeX root = ../main.tex
+
+% 臺大格式規範：中英文摘要各以不超過三頁為原則，內容應包含論述重點、方法或程序、
+% 結果與討論及結論。經系所同意以英文撰寫論文者，仍須附中文摘要。
+% 關鍵字不必寫在這裡，改在 ntusetup.tex 的 keywords / keywords* 設定，
+% 排版時會自動附在摘要末尾。
+%
+% NTU rules: three pages maximum each. State the problem, the method, the
+% results, and the conclusion. A thesis written in English still needs the
+% Chinese abstract. Keywords are NOT typed here; set them in ntusetup.tex and
+% the class appends them automatically.
+
+\begin{abstract}
+
+在這裡寫中文摘要。刪掉這段文字，換成論述重點、方法或程序、結果與討論及結論。
+
+% zhlipsum 預設輸出簡體中文，但預設中文字型 AR PL KaitiM Big5 是 Big5 繁體字型，
+% 排不出簡體字。name=trad 換成繁體樣稿（另有 xiangyu、nanshanjing 兩組）。
+% zhlipsum defaults to simplified Chinese, which the Big5 CJK font cannot set.
+% name=trad selects the traditional sample text.
+\zhlipsum[1][name=trad]
+
+\end{abstract}
+
+\begin{abstract*}
+
+Write the English abstract here. Replace this paragraph with the problem, the
+method, the results, and the conclusion.
+
+\lipsum[1]
+
+\end{abstract*}

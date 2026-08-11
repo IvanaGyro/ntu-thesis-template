@@ -1,0 +1,70 @@
+% !TEX TS-program = xelatex
+% !BIB program = biber
+% !TEX encoding = UTF-8 Unicode
+
+\documentclass[
+  twoside,
+  openright,
+  degree    = master,               % degree = master | doctor
+  language  = english,              % language = chinese | english
+  fontset   = default,              % fontset = default | template | system | overleaf
+                                    %   default  自由授權替代字型，Overleaf 與本機皆可用
+                                    %   template 使用者自行放進 fonts/ 的字型（見 fonts/README.md）
+                                    %   system   由作業系統解析字族名稱
+                                    %   overleaf Overleaf 影像內建字型
+  mathfont  = stix,                 % mathfont = default | termes | stix
+  watermark = true,                 % watermark = true | false
+  doi       = true,                 % doi = true | false
+]{ntuthesis}
+
+\input{ntusetup}
+\input{environments}
+\addbibresource{back/references.bib}
+
+\newcommand{\showcoverseal}{}        % Required for submission; comment out only to hide the cover watermark in drafts.
+
+\begin{document}
+
+% 封面與口試審定
+% Cover and Verification Letter
+\makecover                          % 論文封面（Cover）
+\makeverification                   % 口試委員審定書（Verification Letter）
+
+% 致謝與論文摘要
+% Acknowledgement and Abstract
+\input{front/acknowledgement}         % 致謝（Acknowledgement）
+\input{front/abstract}              % 摘要（Abstract）
+
+% 生成目錄與符號列表
+% Contents of Tables and Denotation
+\maketableofcontents                % 目錄（Table of Contents）
+\makelistoffigures                  % 圖目錄（List of Figures）
+\makelistoftables                   % 表目錄（List of Tables）
+\input{front/denotation}            % 符號列表（Denotation）
+
+% 論文內容
+% Contents of Thesis
+\mainmatter
+\input{contents/chapter01}
+\input{contents/chapter02}
+\input{contents/chapter03}
+\input{contents/chapter04}
+\input{contents/chapter05}
+
+% 參考文獻
+% References
+\refmatter
+% back/references.bib 為每種 biblatex 條目型別各準備一個範例。\nocite{*} 讓所有
+% 條目都印出來，方便比對格式。開始寫論文時請刪掉這一行，否則未引用的條目也會列入。
+% references.bib holds one example per biblatex entry type. \nocite{*} prints
+% them all so the formatting can be compared. DELETE THIS LINE once you start
+% writing, or uncited entries will show up in your bibliography.
+\nocite{*}
+\printbibliography
+
+% 附錄
+% Appendices
+\input{back/appendix01}
+\input{back/appendix02}
+
+\end{document}

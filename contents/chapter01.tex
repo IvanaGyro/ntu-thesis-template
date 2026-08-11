@@ -1,0 +1,42 @@
+% !TeX root = ../main.tex
+
+\chapter{Introduction}\label{chap:introduction}
+
+\section{Background}
+
+Open with the problem your field cares about, in language a first-year graduate
+student in a neighbouring department could follow. Replace this paragraph.
+
+\lipsum[1][1-6]
+
+\section{Motivation}
+
+State the gap: what is unknown, unmeasured, or unresolved, and why it matters
+that somebody close it. A committee reads this section to decide whether the
+rest of the thesis was worth writing.
+
+\lipsum[2][1-5]
+
+\section{Contributions}
+
+List what this thesis adds. Keep the claims narrow enough that
+Chapter~\ref{chap:results} can actually support them.
+
+\begin{itemize}
+  \item The first contribution.
+  \item The second contribution.
+  \item The third contribution.
+\end{itemize}
+
+\section{Thesis Organization}
+
+% \ref{...} 會被替換成章號。編譯兩次才會正確：第一次把章號寫進 main.aux，
+% 第二次才讀得到。latexmk 會自動處理。
+% \ref{...} expands to the chapter number. It takes two compiler passes to
+% resolve — the first writes main.aux, the second reads it. latexmk handles
+% this automatically, which is why the build uses it.
+Chapter~\ref{chap:template} shows what this template can typeset and how to
+drive it. Chapter~\ref{chap:methods} describes the methods.
+Chapter~\ref{chap:results} reports the results, and
+Chapter~\ref{chap:discussion} discusses what they mean, where they fall short,
+and what should come next.

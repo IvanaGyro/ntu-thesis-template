@@ -1,0 +1,27 @@
+[workspace]
+name = "ntu-thesis-template"
+version = "0.1.0"
+description = "Reproducible, rootless build environment for the NTU thesis template"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12.*"
+pytinytex = "0.5.*"
+pygments = "2.19.*"
+perl = "5.*"
+fontconfig = ">=2.14,<3"
+ca-certificates = "*"
+pymupdf = ">=1.28.0,<2"
+requests = ">=2.32,<3"
+openpyxl = ">=3.1,<4"
+matplotlib = ">=3.8,<4"
+numpy = ">=1.26,<3"
+
+[tasks]
+setup = { cmd = "python scripts/tex_toolchain.py setup", description = "Install rootless TinyTeX and all thesis TeX packages" }
+doctor = { cmd = "python scripts/tex_toolchain.py doctor", description = "Check the rootless TinyTeX installation" }
+build = { cmd = "python scripts/tex_toolchain.py build", depends-on = ["setup"], description = "Build main.pdf with XeLaTeX, Biber, and minted" }
+clean = { cmd = "python scripts/tex_toolchain.py clean", description = "Remove LaTeX build artifacts" }
+protect = { cmd = "python scripts/protect_pdf.py", description = "Write main-protected.pdf: readable by anyone, editing and copying locked behind an owner password" }
+figures = { cmd = "python scripts/make_example_figures.py", description = "Regenerate the example plots in figures/ (the PDFs are committed; this is not part of build)" }

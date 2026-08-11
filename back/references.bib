@@ -1,0 +1,259 @@
+% ---------------------------------------------------------------------------
+% 參考文獻範例 — Bibliography examples
+% ---------------------------------------------------------------------------
+%
+% 每種 biblatex 條目型別各一個範例，主題輪流取自八大學門，方便任何系所的
+% 使用者找到最接近自己領域的一筆直接複製修改。條目中的作者、標題、期刊名皆為
+% 虛構的示範資料，開始寫論文時請整份刪除，換成真正的文獻。
+%
+% One worked example per biblatex entry type, with subjects rotated across the
+% eight broad fields so every reader finds something close to home. Every
+% author, title, and journal below is invented placeholder data: delete this
+% file wholesale and replace it with your real references.
+%
+% 選擇型別的原則 / Choosing a type:
+%
+%   期刊論文 → @article        專書 → @book            專書中的一章 → @inbook
+%   論文集中的一篇 → @incollection            會議論文 → @inproceedings
+%   技術報告 → @report         學位論文 → @thesis      軟體 → @software
+%   資料集 → @dataset          網頁 → @online          專利 → @patent
+%
+% 有疑問時 @misc 一定能用，但格式最不精確。
+% When in doubt @misc always works, but formats least precisely.
+%
+% 這裡略過 @mvbook / @mvcollection / @mvproceedings / @mvreference（多冊作品）、
+% @suppbook / @suppcollection / @suppperiodical（附錄性質）與 @set（集合條目），
+% 學位論文極少用到。需要時請查 biblatex 手冊第 2.1 節。
+% Omitted: the @mv* multi-volume forms, the @supp* supplementary forms, and
+% @set. See section 2.1 of the biblatex manual if you need them.
+% ---------------------------------------------------------------------------
+
+
+% === @article — 期刊論文 ===================================================
+% 8. 醫學、健康與公衛 Medicine, health, and public health
+@article{ex:article,
+  author  = {Lin, Shu-Fen and Alvarez, Mateo and Okonkwo, Chidi},
+  title   = {A randomised trial of an example intervention in primary care},
+  journal = {Journal of Example Medicine},
+  year    = {2024},
+  volume  = {58},
+  number  = {4},
+  pages   = {211--229},
+  doi     = {10.0000/jem.2024.0211},
+}
+
+% === @book — 專書 ==========================================================
+% 1. 人文與文化 Humanities and culture
+@book{ex:book,
+  author    = {Whitfield, Eleanor},
+  title     = {Reading the Archive: An Example History},
+  publisher = {Example University Press},
+  address   = {Taipei},
+  year      = {2021},
+  edition   = {2},
+  isbn      = {978-0-00-000000-0},
+}
+
+% === @inbook — 專書中的一章，作者與全書相同 ===============================
+% 1. 人文與文化 Humanities and culture
+@inbook{ex:inbook,
+  author    = {Whitfield, Eleanor},
+  title     = {Marginalia and the Reader},
+  booktitle = {Reading the Archive: An Example History},
+  publisher = {Example University Press},
+  address   = {Taipei},
+  year      = {2021},
+  chapter   = {4},
+  pages     = {97--134},
+}
+
+% === @booklet — 無出版社的小冊子 ===========================================
+% 2. 社會、政治與公共政策 Social science, politics, and public policy
+@booklet{ex:booklet,
+  author       = {Example Policy Forum},
+  title        = {Housing Affordability: A Briefing for Legislators},
+  howpublished = {Printed briefing distributed at a public hearing},
+  address      = {Taipei},
+  year         = {2023},
+}
+
+% === @collection — 論文集全書（有編者、無單一作者）=========================
+% 1. 人文與文化 Humanities and culture
+@collection{ex:collection,
+  editor    = {Baptiste, Amara and Sung, Yi-Chen},
+  title     = {Approaches to Comparative Example Studies},
+  publisher = {Example Academic Publishing},
+  address   = {Leiden},
+  year      = {2022},
+}
+
+% === @incollection — 論文集中的一篇，作者與編者不同 ========================
+% 3. 法律與制度 Law and institutions
+@incollection{ex:incollection,
+  author    = {Navarro, Isabel},
+  title     = {Proportionality review in constitutional adjudication},
+  booktitle = {Approaches to Comparative Example Studies},
+  editor    = {Baptiste, Amara and Sung, Yi-Chen},
+  publisher = {Example Academic Publishing},
+  address   = {Leiden},
+  year      = {2022},
+  pages     = {155--180},
+}
+
+% === @dataset — 資料集 =====================================================
+% 7. 生物、農業與環境 Life science, agriculture, and environment
+@dataset{ex:dataset,
+  author       = {Rahman, Nadia and Chen, Wei-Ting},
+  title        = {Forest canopy survey of an example watershed, 2018--2023},
+  publisher    = {Example Data Repository},
+  year         = {2023},
+  version      = {3.1},
+  doi          = {10.0000/exampledata.2023.441},
+  urldate      = {2026-08-11},
+}
+
+% === @manual — 技術文件、使用手冊 ==========================================
+% 6. 工程、資訊與科技 Engineering, computing, and technology
+@manual{ex:manual,
+  author       = {{Example Instruments Corporation}},
+  title        = {Model EX-2000 Spectrometer: Operating Manual},
+  organization = {Example Instruments Corporation},
+  address      = {Hsinchu},
+  year         = {2020},
+  version      = {Rev.\ C},
+}
+
+% === @misc — 其他無法歸類者 ================================================
+% 4. 商業與管理 Business and management
+@misc{ex:misc,
+  author       = {{Example Holdings}},
+  title        = {Annual results announcement for the year ended December 2024},
+  howpublished = {Press release},
+  year         = {2025},
+  month        = {3},
+}
+
+% === @online — 網路資源，必須有 url 與 urldate =============================
+% 2. 社會、政治與公共政策 Social science, politics, and public policy
+@online{ex:online,
+  author  = {{Example Statistical Office}},
+  title   = {Labour force survey: quarterly summary tables},
+  year    = {2026},
+  url     = {https://example.org/statistics/labour-force},
+  urldate = {2026-08-11},
+}
+
+% === @patent — 專利 ========================================================
+% 6. 工程、資訊與科技 Engineering, computing, and technology
+@patent{ex:patent,
+  author = {Fournier, Luc and Yamada, Haruki},
+  title  = {Method and apparatus for example signal conditioning},
+  number = {US 0,000,000 B2},
+  type   = {patent},
+  location = {countryus},
+  year   = {2019},
+}
+
+% === @periodical — 整期期刊或特刊 ==========================================
+% 5. 基礎科學與數學 Basic science and mathematics
+@periodical{ex:periodical,
+  editor = {Ibrahim, Salma},
+  title  = {Special issue on numerical methods for example systems},
+  series = {Review of Example Physics},
+  year   = {2023},
+  volume = {41},
+  number = {2},
+}
+
+% === @proceedings — 會議論文集全書 =========================================
+% 6. 工程、資訊與科技 Engineering, computing, and technology
+@proceedings{ex:proceedings,
+  editor       = {Costa, Renata and Park, Ji-Hoon},
+  title        = {Proceedings of the 12th International Conference on Example Computing},
+  publisher    = {Example Computing Society},
+  address      = {New York},
+  year         = {2024},
+  eventdate    = {2024-06-17/2024-06-20},
+  venue        = {Taipei},
+}
+
+% === @inproceedings — 會議論文集中的一篇 ===================================
+% 6. 工程、資訊與科技 Engineering, computing, and technology
+@inproceedings{ex:inproceedings,
+  author    = {Delacroix, Yves and Huang, Pei-Shan},
+  title     = {Scalable inference for example graphs},
+  booktitle = {Proceedings of the 12th International Conference on Example Computing},
+  editor    = {Costa, Renata and Park, Ji-Hoon},
+  publisher = {Example Computing Society},
+  address   = {New York},
+  year      = {2024},
+  pages     = {88--97},
+  doi       = {10.0000/icec.2024.0088},
+}
+
+% === @reference — 工具書全書（辭典、百科）=================================
+% 1. 人文與文化 Humanities and culture
+@reference{ex:reference,
+  editor    = {Moreau, Céline},
+  title     = {The Example Dictionary of Literary Terms},
+  publisher = {Example Reference Press},
+  address   = {Oxford},
+  year      = {2020},
+  edition   = {4},
+}
+
+% === @inreference — 工具書中的一個詞條 =====================================
+% 3. 法律與制度 Law and institutions
+@inreference{ex:inreference,
+  author    = {Nkemelu, Ada},
+  title     = {Due process},
+  booktitle = {The Example Encyclopedia of Law},
+  editor    = {Moreau, Céline},
+  publisher = {Example Reference Press},
+  address   = {Oxford},
+  year      = {2021},
+  pages     = {412--418},
+}
+
+% === @report — 技術報告、政府報告、白皮書 ==================================
+% 8. 醫學、健康與公衛 Medicine, health, and public health
+@report{ex:report,
+  author      = {{Example Health Authority}},
+  title       = {Surveillance of communicable disease: annual report},
+  type        = {techreport},
+  institution = {Example Health Authority},
+  address     = {Geneva},
+  year        = {2025},
+  number      = {EHA-2025-07},
+}
+
+% === @software — 軟體、程式套件 ============================================
+% 5. 基礎科學與數學 Basic science and mathematics
+@software{ex:software,
+  author  = {Bergström, Anna and Ito, Kenji},
+  title   = {exampletools: a library for reproducible numerical experiments},
+  year    = {2025},
+  version = {2.4.0},
+  url     = {https://example.org/exampletools},
+  urldate = {2026-08-11},
+}
+
+% === @thesis — 學位論文（type 決定印出「碩士」或「博士」）=================
+% 7. 生物、農業與環境 Life science, agriculture, and environment
+@thesis{ex:thesis,
+  author      = {Sitanggang, Rina},
+  title       = {Soil microbial responses to an example land-use change},
+  type        = {mathesis},
+  institution = {National Taiwan University},
+  address     = {Taipei},
+  year        = {2023},
+}
+
+% === @unpublished — 未出版稿件、工作論文 ===================================
+% 4. 商業與管理 Business and management
+@unpublished{ex:unpublished,
+  author = {Okafor, Ngozi and Lai, Chun-Hao},
+  title  = {Price dispersion in an example two-sided market},
+  note   = {Working paper, presented at the Example Economics Workshop},
+  year   = {2026},
+}
