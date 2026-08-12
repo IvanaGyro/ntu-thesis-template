@@ -6,17 +6,26 @@ rest comes from your system.
 
 ## What ships here
 
-| File | Font | Licence |
-| --- | --- | --- |
-| `chinese/TW-Kai-98_1.ttf` | 全字庫正楷體 TW-Kai | 政府資料開放授權條款－第1版 or OFL-1.1 |
-| `chinese/TW-Sung-98_1.ttf` | 全字庫正宋體 TW-Sung | 政府資料開放授權條款－第1版 or OFL-1.1 |
-| `english/Tinos-*.ttf` | Tinos (Regular, Bold, Italic, Bold Italic) | OFL-1.1 |
+| File | Font | Copyright | Licence |
+| --- | --- | --- | --- |
+| `chinese/TW-Kai-98_1.ttf` | 全字庫正楷體 TW-Kai | 數位發展部 | 政府資料開放授權條款－第1版 **or** OFL-1.1 |
+| `chinese/TW-Sung-98_1.ttf` | 全字庫正宋體 TW-Sung | 數位發展部 | 政府資料開放授權條款－第1版 **or** OFL-1.1 |
+| `english/Tinos-*.ttf` | Tinos (Regular, Bold, Italic, Bold Italic) | Google Inc., designed by Steve Matteson | OFL-1.1 |
+
+Both licences require their terms to travel with the font files, so
+[`OFL.txt`](OFL.txt) sits alongside them with the full licence text and the
+copyright notices copied verbatim out of the fonts' own metadata. **Keep it
+next to the fonts if you redistribute this template**, and keep the fonts
+unmodified unless you have read the OFL's renaming clause.
 
 The 全字庫 fonts are published by 數位發展部 at
 <https://data.gov.tw/dataset/5961>; only the BMP files are included, not the
 `Ext-B` and `Plus` variants, which cover rare planes a thesis will not need.
 Tinos is metric-compatible with Times New Roman, so swapping between them does
 not reflow the document.
+
+Your own compiled thesis is unaffected by any of this: embedding a subset of a
+font in a PDF is normal use, and both licences permit it.
 
 ## Choosing a set
 

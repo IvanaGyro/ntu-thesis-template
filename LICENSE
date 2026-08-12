@@ -40,13 +40,20 @@ repository merely reproduces:
     (教務處) at https://www.aca.ntu.edu.tw/w/aca/GAADForms.
 
 The fonts under fonts/ are redistributed under their own licences and are not
-covered by the MIT grant above:
+covered by the MIT grant above. Both licences require their terms to accompany
+the font files, so the full text and the verbatim copyright notices are in
+fonts/OFL.txt, which must stay with the fonts if you redistribute them.
 
   - fonts/chinese/TW-Kai-98_1.ttf and fonts/chinese/TW-Sung-98_1.ttf are the
-    全字庫正楷體 and 全字庫正宋體 published by 數位發展部 (Ministry of Digital
-    Affairs) at https://data.gov.tw/dataset/5961, under the Open Government
-    Data License, version 1.0, or OFL-1.1.
-  - fonts/english/Tinos-*.ttf are Tinos, under OFL-1.1.
+    全字庫正楷體 and 全字庫正宋體, (c) 2026 Ministry of Digital Affairs
+    (數位發展部), obtained from https://data.gov.tw/dataset/5961. The publisher
+    offers a choice of the Open Government Data License, version 1.0, or
+    OFL-1.1. The Open Government Data License asks that the source be
+    attributed; this notice and fonts/OFL.txt do so.
+  - fonts/english/Tinos-*.ttf are Tinos, Copyright 2010 Google Inc., designed
+    by Steve Matteson, licensed under OFL-1.1.
+
+Both fonts are redistributed unmodified.
 
 No proprietary font is bundled. Times New Roman, 標楷體, and 新細明體 must come
 from your own system; see fonts/README.md.
