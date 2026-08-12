@@ -50,7 +50,7 @@ When a change does not seem to take effect, `pixi run clean` and build again.
 | Step | File | What goes in it |
 | --- | --- | --- |
 | 1 | `ntusetup.tex` | Title, author, student ID, advisor, department, keywords, DOI, email, ORCID. The only place personal data belongs. |
-| 2 | `main.tex` | Degree (`master`/`doctor`), language (`chinese`/`english`), font set. |
+| 2 | `main.tex` | Degree (`master`/`doctor`), language (`chinese`/`english`), `fontset`, `cjkfont`. |
 | 3 | `front/abstract.tex` | Chinese and English abstracts, three pages each at most. |
 | 4 | `front/acknowledgement.tex` | 謝辭, optional, one page at most. |
 | 5 | `front/denotation.tex` | Symbol list. Ships one example per broad field — keep what fits, delete the rest. |
@@ -100,23 +100,23 @@ revises the form.
 
 ## Fonts
 
-The template defaults to `fontset = default`, which uses two freely licensed
-fonts that ship with every TeX Live, including Overleaf's:
+`fontset = default` uses **your system's Times New Roman** for English — the
+font the format rules name, present on Windows and macOS, and not shipped here
+because it is proprietary — together with **全字庫正楷體 TW-Kai**, which is
+bundled. `cjkfont = sung` switches the Chinese face to **全字庫正宋體 TW-Sung**.
 
-- **TeX Gyre Termes** — metric-compatible with Times New Roman.
-- **AR PL KaitiM Big5** — a Big5 楷書 face.
+If Times New Roman is not installed, the build **stops with an error** rather
+than quietly substituting a look-alike. Set `fontset = tinos` to use the
+bundled, metric-compatible Tinos instead; that combination needs no installed
+fonts at all and always compiles, including on Overleaf.
 
-They are loaded by filename, so kpathsea resolves them and the result is
-identical on Overleaf and locally. This satisfies the format rule below without
-redistributing any proprietary font.
-
-To use literal Times New Roman and 標楷體, see [`fonts/README.md`](fonts/README.md).
-Other choices are `fontset = template` (files you drop into `fonts/`),
-`fontset = system` (installed system-wide), and `fontset = overleaf`.
+`fontset = template` (your own files in `fonts/`), `fontset = system`
+(everything from installed system fonts), and `fontset = overleaf` are also
+available. Full details, licences, and where to obtain Times New Roman, 標楷體
+and 新細明體 are in [`fonts/README.md`](fonts/README.md).
 
 Note that `zhlipsum`, used for the Chinese placeholder text, defaults to
-simplified Chinese, which a Big5 font cannot set. The template calls it as
-`\zhlipsum[1][name=trad]`.
+simplified Chinese. The template calls it as `\zhlipsum[1][name=trad]`.
 
 ## NTU format compliance
 
@@ -132,7 +132,7 @@ From 國立臺灣大學碩、博士學位論文格式規範 (112學年度第1學
 | A4, 12 pt body | `\LoadClass[a4paper, 12pt]{report}` |
 | Margins 上3 下2 左右3 公分 | `geometry` in `ntuthesis.cls` |
 | Line spacing | `\setstretch{1.6}` |
-| 楷書 + Times New Roman | `fontset` (see above) |
+| 楷書 + Times New Roman | `fontset` / `cjkfont` (see above) |
 | Cover at 18/16/14 pt, centred | `\makecover` |
 | Page order, 摘要 ≤ 3 pages, 謝辭 ≤ 1 page | `main.tex` inclusion order; noted in each file |
 

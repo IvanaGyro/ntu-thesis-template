@@ -7,11 +7,15 @@
   openright,
   degree    = master,               % degree = master | doctor
   language  = english,              % language = chinese | english
-  fontset   = default,              % fontset = default | template | system | overleaf
-                                    %   default  自由授權替代字型，Overleaf 與本機皆可用
+  fontset   = default,              % fontset = default | tinos | template | system | overleaf
+                                    %   default  系統的 Times New Roman ＋ 隨附全字庫字型
+                                    %   tinos    隨附的 Tinos ＋ 全字庫，完全不需安裝字型
                                     %   template 使用者自行放進 fonts/ 的字型（見 fonts/README.md）
-                                    %   system   由作業系統解析字族名稱
+                                    %   system   中英文都由作業系統解析字族名稱
                                     %   overleaf Overleaf 影像內建字型
+  cjkfont   = kai,                  % cjkfont = kai | sung
+                                    %   kai  全字庫正楷體 TW-Kai（規範以楷書為主）
+                                    %   sung 全字庫正宋體 TW-Sung
   mathfont  = stix,                 % mathfont = default | termes | stix
   watermark = true,                 % watermark = true | false
   doi       = true,                 % doi = true | false

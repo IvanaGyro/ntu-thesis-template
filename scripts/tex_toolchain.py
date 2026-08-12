@@ -38,7 +38,6 @@ TEX_PACKAGES = (
     "accsupp",
     "amsfonts",
     "amsmath",
-    "arphic-ttf",
     "biber",
     "biblatex",
     "booktabs",
@@ -72,7 +71,6 @@ TEX_PACKAGES = (
     "placeins",
     "setspace",
     "stix2-otf",
-    "tex-gyre",
     "titlesec",
     "tocloft",
     "tools",
@@ -89,9 +87,6 @@ REQUIRED_TEX_FILES = (
     "unicode-math.sty",
     "xeCJK.sty",
     "STIXTwoMath-Regular.otf",
-    # fontset=default: TeX Gyre Termes for Latin, AR PL KaitiM Big5 for CJK.
-    "texgyretermes-regular.otf",
-    "bkai00mp.ttf",
 )
 
 # Fonts the class loads by filename. XeTeX resolves these through kpathsea, so
@@ -99,8 +94,6 @@ REQUIRED_TEX_FILES = (
 # `doctor` can report where each one came from.
 FONT_PROBES = (
     "STIXTwoMath-Regular.otf",
-    "texgyretermes-regular.otf",
-    "bkai00mp.ttf",
 )
 
 

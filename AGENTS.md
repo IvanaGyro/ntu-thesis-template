@@ -68,8 +68,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   bibliography unnoticed.
 - Never commit a real signed verification letter, a real DOI, a real student
   ID, or a real acknowledgement.
-- Never commit font files. `fonts/**/*.ttf` is gitignored; Times New Roman and
-  標楷體 are proprietary. Upstream bundles them; this fork deliberately does not.
+- Never commit proprietary font files. `fonts/**/*.ttf` is gitignored except for
+  the freely licensed faces the template ships (Tinos, 全字庫 TW-Kai/TW-Sung).
+  Times New Roman and 標楷體 are proprietary; upstream bundles them, this fork
+  deliberately does not.
 - MIT licensed, derived from
   [Hsins/NTU-Thesis-LaTeX-Template](https://github.com/Hsins/NTU-Thesis-LaTeX-Template)
   (MIT, © 2017 Hsin-Hsiang Peng). MIT requires that copyright notice to travel
@@ -81,13 +83,19 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 
 ## Constraints worth remembering
 
-- The default CJK font (`bkai00mp.ttf`, AR PL KaitiM Big5) is **Big5, i.e.
-  traditional only**. Simplified characters render as missing glyphs. This is
-  why `front/abstract.tex` calls `\zhlipsum[1][name=trad]` rather than the
-  package default.
-- The class loads default fonts by *filename*, not family name, so kpathsea
-  resolves them and fontconfig is never consulted. Changing that breaks the
-  guarantee that Overleaf and local builds agree.
+- `front/abstract.tex` calls `\zhlipsum[1][name=trad]`; the package default is
+  simplified Chinese, which a traditional-only CJK face cannot set.
+- `fontset=default` must keep checking `\IfFontExistsTF{Times New Roman}` before
+  loading it. fontconfig answers that request with a metric-compatible
+  substitute (`fc-match "Times New Roman"` often returns Tinos), so without the
+  check a missing font produces a plausible PDF in the wrong typeface instead of
+  an error. `\IfFontExistsTF` is not fooled by the substitution.
+- Shipped fonts load by *filename* with an explicit `Path`, so they resolve
+  identically on Overleaf and locally without fontconfig. Only `system` and
+  `overleaf` resolve by family name.
+- `fonts/` is ~72 MB, almost all of it the two 全字庫 TTFs. Adding the `Ext-B`
+  or `Plus` variants would roughly double that for characters a thesis will not
+  use.
 - `\makeverification` uses the file at `\ntusetup{verification}` when it
   exists, and typesets its own letter when it does not. Both paths must keep
   the same page number, watermark, and DOI stamp.

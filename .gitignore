@@ -24,10 +24,14 @@ __pycache__/
 /main.pdf
 /main-protected.pdf
 
-# Licensed fonts a user drops in for fontset=template. They belong to you, not
-# to this repository — see fonts/README.md.
+# Proprietary fonts a user drops in for fontset=template belong to them, not to
+# this repository — see fonts/README.md. The freely licensed fonts the template
+# ships (Tinos, 全字庫 TW-Kai and TW-Sung) are re-included below.
 /fonts/english/*.ttf
 /fonts/chinese/*.ttf
+!/fonts/english/Tinos-*.ttf
+!/fonts/chinese/TW-Kai-*.ttf
+!/fonts/chinese/TW-Sung-*.ttf
 
 # Generated NTU TDR form filler (contains submission/personal data)
 /.tdr-upload.js

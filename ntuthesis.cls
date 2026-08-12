@@ -44,6 +44,13 @@
 \newcommand{\ntu@path@font}{./fonts/english/}
 \newcommand{\ntu@path@cjkfont}{./fonts/chinese/}
 
+% 隨模板散布的中文字型檔名。全字庫字型由數位發展部釋出，授權為
+% 「政府資料開放授權條款－第1版」或 OFL-1.1，可自由散布。
+% Shipped CJK font filenames. The 全字庫 fonts are released by 數位發展部 under
+% the Open Government Data License v1 or OFL-1.1, so they can be redistributed.
+\newcommand{\ntu@cjkfont@kai}{TW-Kai-98_1.ttf}
+\newcommand{\ntu@cjkfont@sung}{TW-Sung-98_1.ttf}
+
 % 變數: 中文翻譯
 % Variables: Translation (Chinese)
 \newcommand{\ntu@verificationletter@zh}{口試委員審定書}
@@ -260,11 +267,19 @@
   fontset = {
     choices = {
       default,
+      tinos,
       system,
       overleaf,
       template,
     },
     default = default,
+  },
+  cjkfont = {
+    choices = {
+      kai,
+      sung,
+    },
+    default = kai,
   },
   mathfont = {
     choices = {
@@ -540,42 +555,90 @@
 % - \setCJKmonofont{}			中文等寬字體
 %
 
+% 由 cjkfont 選項決定隨附的中文字型：kai 為全字庫正楷體，sung 為全字庫正宋體。
+% 臺大格式規範寫的是「中文以12號楷書（細明體及標楷體為主）」，因此預設楷體。
+% cjkfont picks the shipped CJK face: kai (楷體, the default) or sung (宋體).
+\ifthenelse{\equal{\ntu@cjkfont}{sung}}
+  {\newcommand{\ntu@cjkfontfile}{\ntu@cjkfont@sung}}
+  {\newcommand{\ntu@cjkfontfile}{\ntu@cjkfont@kai}}
+
 % fontset = default
 %
-% 臺大格式規範要求「中文以12號楷書、英文以12號 Times New Roman」。標楷體與
-% Times New Roman 都是商業字型，不能隨模板散布，因此預設改用兩套可自由散布、
-% 且 TeX Live（含 Overleaf）本身就會安裝的替代字型：
+% 英文用系統安裝的 Times New Roman，不隨模板散布字型檔：Times New Roman 是
+% Monotype 的商業字型，但 Windows 與 macOS 都內建，多數使用者本來就有。
+% 中文用隨附的全字庫字型，以檔名載入，不必另外安裝。
 %
-%   - TeX Gyre Termes：Times 的 metric-compatible 複製品，字寬與 Times 相同。
-%   - AR PL KaitiM Big5：文鼎公眾授權的 Big5 楷體。
+% 找不到 Times New Roman 時直接報錯，不會默默改用別的字型。fontconfig 會把
+% Times New Roman 對應到 Tinos、Liberation Serif 這類 metric-compatible 的替代
+% 字型（本機執行 fc-match "Times New Roman" 即可看到），排出來的 PDF 看起來正常，
+% 卻不是格式規範指定的字型。\IfFontExistsTF 不受這種替換影響，會如實回報字型
+% 不存在，因此在這裡先檢查再載入。沒有 Times New Roman 的人請改用
+% fontset = tinos。
 %
-% 兩者都以「檔名」載入，由 kpathsea 在 texmf 樹中尋找，因此不依賴 fontconfig，
-% 在 Overleaf 與本機 TinyTeX 的行為完全一致。需要真正的 Times New Roman 與
-% 標楷體時改用 fontset = template 或 fontset = system。
+% English uses the system's Times New Roman; the file is not shipped because it
+% is proprietary but present on Windows and macOS. CJK uses the bundled 全字庫
+% face, loaded by filename so nothing has to be installed.
 %
-% The NTU format rules name Times New Roman and 標楷體, both proprietary and so
-% not redistributable with a template. The default set instead uses freely
-% licensed stand-ins that ship with every TeX Live, including Overleaf's.
-% Loading them by filename means kpathsea resolves them and fontconfig is never
-% consulted, so local and Overleaf builds agree.
+% A missing Times New Roman is a hard error rather than a silent substitution.
+% fontconfig happily answers a request for Times New Roman with a
+% metric-compatible stand-in such as Tinos — run fc-match "Times New Roman" to
+% see it — which produces a plausible-looking PDF set in the wrong typeface.
+% \IfFontExistsTF is not fooled by that substitution, so the check below is
+% what makes the failure visible. Use fontset = tinos when the font is absent.
 \ifthenelse{\equal{\ntu@fontset}{default}}{
-  \setmainfont{texgyretermes-regular.otf}[
-    BoldFont       = texgyretermes-bold.otf ,
-    ItalicFont     = texgyretermes-italic.otf ,
-    BoldItalicFont = texgyretermes-bolditalic.otf, ]
-  \setCJKmainfont{bkai00mp.ttf}
-  \setCJKmonofont{bkai00mp.ttf}
+  \IfFontExistsTF{Times New Roman}{
+    \setmainfont{Times New Roman}
+  }{
+    \ntu@error{%
+      fontset=default needs Times New Roman, which is not installed on this
+      system.\MessageBreak
+      Install it, or switch to fontset=tinos in main.tex to use the bundled
+      metric-compatible Tinos instead.\MessageBreak
+      See fonts/README.md%
+    }
+  }
+  \setCJKmainfont{\ntu@cjkfontfile}[Path = \ntu@path@cjkfont]
+  \setCJKmonofont{\ntu@cjkfontfile}[Path = \ntu@path@cjkfont]
+}
+
+% fontset = tinos
+%
+% 完全使用隨模板散布的字型，不需要系統安裝任何東西，Overleaf 上也一定能編譯。
+% Tinos 的字寬與 Times New Roman 相同（metric-compatible），版面配置一致，
+% 但字型名稱不是規範所寫的 Times New Roman，正式送印前請確認系所是否接受。
+%
+% Fully self-contained: every font comes from fonts/, so nothing needs to be
+% installed and Overleaf always compiles. Tinos is metric-compatible with Times
+% New Roman, so line breaks and page counts match, but it is not literally the
+% typeface the format rules name — check with your department before submitting.
+\ifthenelse{\equal{\ntu@fontset}{tinos}}{
+  \setmainfont{Tinos-Regular.ttf}[
+    Path           = \ntu@path@font ,
+    BoldFont       = Tinos-Bold.ttf ,
+    ItalicFont     = Tinos-Italic.ttf ,
+    BoldItalicFont = Tinos-BoldItalic.ttf, ]
+  \setCJKmainfont{\ntu@cjkfontfile}[Path = \ntu@path@cjkfont]
+  \setCJKmonofont{\ntu@cjkfontfile}[Path = \ntu@path@cjkfont]
 }
 
 % fontset = system
 %
-% 字型已安裝在作業系統中時使用，由 fontconfig 以字族名稱解析。
-% Resolves the named families through fontconfig; use when the real fonts are
-% installed system-wide rather than copied into fonts/.
+% 中英文都由作業系統以字族名稱解析，適合已經安裝 Times New Roman 與標楷體的
+% 機器。同樣先檢查再載入，避免 fontconfig 默默替換。
+% Both scripts resolved from installed system families. Checked before loading,
+% for the same reason as fontset=default.
 \ifthenelse{\equal{\ntu@fontset}{system}}{
-  \setmainfont{Times New Roman}
-  \setCJKmainfont{BiauKai}
-  \setCJKmonofont{BiauKai}
+  \IfFontExistsTF{Times New Roman}{
+    \setmainfont{Times New Roman}
+  }{
+    \ntu@error{fontset=system needs Times New Roman installed system-wide}
+  }
+  \IfFontExistsTF{BiauKai}{
+    \setCJKmainfont{BiauKai}
+    \setCJKmonofont{BiauKai}
+  }{
+    \ntu@error{fontset=system needs 標楷體 (BiauKai) installed system-wide}
+  }
 }
 
 % fontset = template

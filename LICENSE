@@ -39,6 +39,14 @@ repository merely reproduces:
     official blank forms published by NTU's Office of Academic Affairs
     (教務處) at https://www.aca.ntu.edu.tw/w/aca/GAADForms.
 
-Fonts are deliberately not bundled. The default font set uses TeX Gyre Termes
-(GUST Font License) and AR PL KaitiM Big5 (Arphic Public License), both
-supplied by TeX Live rather than by this repository. See fonts/README.md.
+The fonts under fonts/ are redistributed under their own licences and are not
+covered by the MIT grant above:
+
+  - fonts/chinese/TW-Kai-98_1.ttf and fonts/chinese/TW-Sung-98_1.ttf are the
+    全字庫正楷體 and 全字庫正宋體 published by 數位發展部 (Ministry of Digital
+    Affairs) at https://data.gov.tw/dataset/5961, under the Open Government
+    Data License, version 1.0, or OFL-1.1.
+  - fonts/english/Tinos-*.ttf are Tinos, under OFL-1.1.
+
+No proprietary font is bundled. Times New Roman, 標楷體, and 新細明體 must come
+from your own system; see fonts/README.md.
