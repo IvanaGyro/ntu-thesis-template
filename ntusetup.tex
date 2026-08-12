@@ -3,11 +3,13 @@
 % --------------------------------------------------
 % 資訊設定（Information Configs）
 % --------------------------------------------------
+%
+% 這個檔案只放個人資料，版面與樣式設定一律寫在 main.tex。
+% 星號版本（university* 等）是英文，無星號版本是中文。
+%
+% This file holds personal information only; style and layout live in main.tex.
+% The starred keys hold the English text, the unstarred ones the Chinese.
 
-% 這裡是整本論文唯一需要填寫個人資料的地方。星號版本（university* 等）是英文，
-% 無星號版本是中文。
-% This block is the only place personal information has to be filled in. The
-% starred keys hold the English text, the unstarred ones the Chinese.
 \ntusetup{
   university*   = {National Taiwan University},
   university    = {國立臺灣大學},
@@ -24,10 +26,6 @@
   advisor*      = {Lilo},
 % date          = {2026-08-11},         % 若註解掉，則預設為當天
 % oral-date     = {2026-01-19},         % 若註解掉，則預設為當天
-  verification  = {front/verification-letter.pdf},
-                                        % 審定書 PDF 的路徑，預設即為此值。檔案存在時
-                                        % 取代自動排版的審定書，不存在時照舊排版。
-                                        % 博士生改指向 front/verification-letter-doctor.pdf
   DOI           = {DOI Number},         % 送出論文後由臺大配發
   keywords      = {關鍵字一, 關鍵字二, 關鍵字三},
   keywords*     = {Keyword One, Keyword Two, Keyword Three},
@@ -36,80 +34,51 @@
 }
 
 % --------------------------------------------------
-% 加載套件（Include Packages）
+% 口試委員名單（Oral Examination Committee）
 % --------------------------------------------------
-
-\usepackage[
-  backend=biber,
-  style=numeric-comp,
-  sorting=none,
-  alldates=iso,
-  seconds=true,
-  giveninits=true,
-%  natbib=true
-]{biblatex}                             % 參考文獻
-
-\ifthenelse{\equal{\ntumathfont}{termes} \OR \equal{\ntumathfont}{stix}}{
-  \usepackage{amsmath, amsthm}          % 數學環境
-  \usepackage{unicode-math}
-  \ifthenelse{\equal{\ntumathfont}{termes}}{
-    \setmathfont{TeX Gyre Termes Math}
-  }{
-    \setmathfont{STIX Two Math}
-  }
-}{
-  \usepackage{amsmath, amsthm, amssymb} % 數學環境
-}
-% normalem 保留 \uline、\uuline、\uwave、\sout 等指令，但不劫持 \emph。
-% 若省略 normalem，ulem 會將 \emph 改為 \uline，而 biblatex 的 \mkbibemph
-% 是把「巨集」（如 \abx@field@journaltitle）傳給 \emph；ulem 逐個 token 掃描
-% 參數時只看到一個巨集控制序列，因而把整個展開結果排成一個不可斷行的盒子，
-% 導致參考文獻中較長的期刊名／會議名溢出右邊界。
-\usepackage[normalem]{ulem}             % 英文下劃線、雙下劃線與波浪紋效果
-\usepackage{xeCJKfntef}                 % 中文下劃線與刪除線效果（xeCJK 相容）
-\usepackage{booktabs}                   % 改善表格設置
-\usepackage{multirow}                   % 合併儲存格
-\usepackage{diagbox}                    % 插入表格反斜線
-\usepackage{array}                      % 調整表格高度
-\usepackage{longtable}                  % 支援跨頁長表格
-% \usepackage{paralist}                   % 列表環境 legacy
-\usepackage{enumitem}                   % 列表環境
-\usepackage{minted}                     % 程式碼
-\usepackage{placeins}                   % 限制圖片浮動位置
-\usepackage{tikz}                       % 流程圖
-
-\usepackage{lipsum}                     % 英文亂字
-\usepackage{zhlipsum}                   % 中文亂字
-\usepackage{graphicx}
-
-% --------------------------------------------------
-% 套件設定（Packages Settings）
-% --------------------------------------------------
-\usetikzlibrary{shapes.geometric,arrows,positioning,arrows.meta,shadows,backgrounds}
-\setlist{itemsep=0pt, topsep=0pt, parsep=0pt, partopsep=0pt}
-
-% 內文維持左右對齊。少數段落含有幾乎沒有斷行點的長字串（程式指令名稱、連字號
-% 複合詞、行內數學式），TeX 只能在撐大詞間空白與讓文字溢出右邊界之間二選一。
-% \emergencystretch 會在最後一次斷行嘗試時提供額外的伸縮量，使 TeX 改排成較鬆的
-% 行而非溢出版心；排得下的段落不會用到這些伸縮量，輸出與未設定時完全相同。
-\emergencystretch=3em
-
-% TeX 內建的英文斷字規則遇到大小寫混排的專有名詞時，可能排出讀起來像另一個字的
-% 結果（例如 PyTorch 斷成 PyT-orch）。在這裡逐一指定合法的斷字點即可。
-% \hyphenation{Py-Torch Post-greSQL}
-
-% 參考文獻維持左右對齊。條目中的長網址、DOI 與 commit hash 幾乎沒有斷行點，
-% 強制對齊時 TeX 只能在撐大詞間空白與讓字串溢出右邊界之間二選一，因此需要下列設定：
 %
-% 1. 開放在字母與數字之間斷行，但把懲罰值設得很高（9000），使 TeX 仍優先斷在
-%    / 與 . 等標點處，真的排不下時才切在字元中間。
-% 2. 只在參考文獻中放寬行寬容許量，讓無法斷行的長字串改排到下一行而非溢出。
-% 3. note 欄位前放一個 \hfil：40 字元的 commit hash 完全沒有斷行點，若在其前斷行，
-%    前一行的剩餘空白會使 badness 達 10000，TeX 因而寧可讓 hash 溢出。\hfil 讓那段
-%    空白留在行末、badness 歸零，hash 便整串移到下一行；\hfilneg 在未斷行時抵銷
-%    \hfil，此時輸出與一般文字完全相同（盒子寬度與詞間膠料皆不變）。
-\setcounter{biburlnumpenalty}{9000}     % 允許在數字之間斷行（高懲罰值）
-\setcounter{biburlucpenalty}{9000}      % 允許在大寫字母之間斷行（高懲罰值）
-\setcounter{biburllcpenalty}{9000}      % 允許在小寫字母之間斷行（高懲罰值）
-\appto{\bibsetup}{\emergencystretch=3em}
-\DeclareFieldFormat{note}{\nobreak\hfil\penalty0\hfilneg#1}
+% 這份名單不會排進論文。審定書上的簽名由委員親筆簽署，模板不代排；名單只給
+% generate_tdr_upload_script.py 讀取，用來填寫 TDR 上傳表單。
+%
+% 每位委員呼叫一次 \ntucommittee，順序即為表單上的順序。欄位：
+%
+%   name    委員中文姓名
+%   name*   委員英文姓名
+%   email   聯絡信箱
+%   title   身分：指導教授、共同指導教授、口試委員
+%   ORCID   選填
+%
+% This list is never typeset. Signatures on the letter are handwritten; the list
+% exists only for generate_tdr_upload_script.py to fill in the TDR form. Call
+% \ntucommittee once per member, in the order they should appear. ORCID is
+% optional; every other field is required.
+
+\ntucommittee{
+  name   = {莉蘿},
+  name*  = {Lilo},
+  email  = {lilo@ntu.edu.tw},
+  title  = {指導教授},
+  ORCID  = {0000-0000-0000-0001},
+}
+
+\ntucommittee{
+  name   = {奶奶},
+  name*  = {Nani},
+  email  = {nani@ntu.edu.tw},
+  title  = {共同指導教授},
+}
+
+\ntucommittee{
+  name   = {金剛},
+  name*  = {Jumba},
+  email  = {jumba@example.edu.tw},
+  title  = {口試委員},
+  ORCID  = {0000-0000-0000-0002},
+}
+
+\ntucommittee{
+  name   = {普里克利},
+  name*  = {Pleakley},
+  email  = {pleakley@example.edu.tw},
+  title  = {口試委員},
+}

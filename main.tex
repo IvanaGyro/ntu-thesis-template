@@ -2,30 +2,136 @@
 % !BIB program = biber
 % !TEX encoding = UTF-8 Unicode
 
+% ===================================================================
+% 這個檔案放所有版面與樣式設定；個人資料一律寫在 ntusetup.tex。
+% All style and layout settings live in this file. Personal data goes in
+% ntusetup.tex and nowhere else.
+% ===================================================================
+
 \documentclass[
   twoside,
   openright,
-  degree    = master,               % degree = master | doctor
-  language  = english,              % language = chinese | english
-  fontset   = default,              % fontset = default | tinos | template | system | overleaf
+  degree       = master,            % degree = master | doctor
+  language     = english,           % language = chinese | english
+  fontset      = tinos,             % fontset = default | tinos | template | system | overleaf
                                     %   default  系統的 Times New Roman ＋ 隨附全字庫字型
                                     %   tinos    隨附的 Tinos ＋ 全字庫，完全不需安裝字型
                                     %   template 使用者自行放進 fonts/ 的字型（見 fonts/README.md）
                                     %   system   中英文都由作業系統解析字族名稱
                                     %   overleaf Overleaf 影像內建字型
-  cjkfont   = kai,                  % cjkfont = kai | sung
+  cjkfont      = kai,               % cjkfont = kai | sung
                                     %   kai  全字庫正楷體 TW-Kai（規範以楷書為主）
                                     %   sung 全字庫正宋體 TW-Sung
-  mathfont  = stix,                 % mathfont = default | termes | stix
-  watermark = true,                 % watermark = true | false
-  doi       = true,                 % doi = true | false
+  mathfont     = stix,              % mathfont = default | termes | stix
+  watermark    = true,              % watermark = true | false   內頁浮水印
+  coverseal    = true,              % coverseal = true | false   封面校徽
+  doi          = true,              % doi = true | false         頁尾 DOI
+  verification = auto,              % verification = auto | file | typeset
+                                    %   auto     有審定書檔案就用，沒有就自動排版
+                                    %   file     一律使用檔案，找不到就報錯
+                                    %   typeset  一律自動排版，忽略檔案
 ]{ntuthesis}
 
+% --------------------------------------------------
+% 審定書檔案路徑（verification = auto 或 file 時使用）
+% Path to the verification letter, used when verification is auto or file.
+% 博士生改指向 front/verification-letter-doctor.pdf。
+% 簽名後把掃描檔覆蓋上去即可，頁碼、浮水印與 DOI 會照常疊在上面。
+% --------------------------------------------------
+\ntusetup{
+  verificationfile = {front/verification-letter.pdf},
+}
+
+% --------------------------------------------------
+% 個人資料與口試委員名單
+% Personal information and the oral examination committee
+% --------------------------------------------------
 \input{ntusetup}
 \input{environments}
+
+% --------------------------------------------------
+% 加載套件（Include Packages）
+% --------------------------------------------------
+
+\ifthenelse{\equal{\ntumathfont}{termes} \OR \equal{\ntumathfont}{stix}}{
+  \usepackage{amsmath, amsthm}          % 數學環境
+  \usepackage{unicode-math}
+  \ifthenelse{\equal{\ntumathfont}{termes}}{
+    \setmathfont{TeX Gyre Termes Math}
+  }{
+    \setmathfont{STIX Two Math}
+  }
+}{
+  \usepackage{amsmath, amsthm, amssymb} % 數學環境
+}
+% normalem 保留 \uline、\uuline、\uwave、\sout 等指令，但不劫持 \emph。
+% 若省略 normalem，ulem 會將 \emph 改為 \uline，而 biblatex 的 \mkbibemph
+% 是把「巨集」（如 \abx@field@journaltitle）傳給 \emph；ulem 逐個 token 掃描
+% 參數時只看到一個巨集控制序列，因而把整個展開結果排成一個不可斷行的盒子，
+% 導致參考文獻中較長的期刊名／會議名溢出右邊界。
+\usepackage[normalem]{ulem}             % 英文下劃線、雙下劃線與波浪紋效果
+\usepackage{xeCJKfntef}                 % 中文下劃線與刪除線效果（xeCJK 相容）
+\usepackage{booktabs}                   % 改善表格設置
+\usepackage{multirow}                   % 合併儲存格
+\usepackage{diagbox}                    % 插入表格反斜線
+\usepackage{array}                      % 調整表格高度
+\usepackage{longtable}                  % 支援跨頁長表格
+\usepackage{enumitem}                   % 列表環境
+\usepackage{minted}                     % 程式碼
+\usepackage{placeins}                   % 限制圖片浮動位置
+\usepackage{tikz}                       % 流程圖
+\usepackage{graphicx}
+
+\usepackage{lipsum}                     % 英文亂字
+\usepackage{zhlipsum}                   % 中文亂字
+
+% --------------------------------------------------
+% 套件設定（Packages Settings）
+% --------------------------------------------------
+\usetikzlibrary{shapes.geometric,arrows,positioning,arrows.meta,shadows,backgrounds}
+\setlist{itemsep=0pt, topsep=0pt, parsep=0pt, partopsep=0pt}
+
+% 內文維持左右對齊。少數段落含有幾乎沒有斷行點的長字串（程式指令名稱、連字號
+% 複合詞、行內數學式），TeX 只能在撐大詞間空白與讓文字溢出右邊界之間二選一。
+% \emergencystretch 會在最後一次斷行嘗試時提供額外的伸縮量，使 TeX 改排成較鬆的
+% 行而非溢出版心；排得下的段落不會用到這些伸縮量，輸出與未設定時完全相同。
+\emergencystretch=3em
+
+% TeX 內建的英文斷字規則遇到大小寫混排的專有名詞時，可能排出讀起來像另一個字的
+% 結果（例如 PyTorch 斷成 PyT-orch）。在這裡逐一指定合法的斷字點即可。
+% \hyphenation{Py-Torch Post-greSQL}
+
+% --------------------------------------------------
+% 參考文獻設定（Bibliography Settings）
+% --------------------------------------------------
+
+\usepackage[
+  backend=biber,
+  style=numeric-comp,
+  sorting=none,
+  alldates=iso,
+  seconds=true,
+  giveninits=true,
+%  natbib=true
+]{biblatex}
+
 \addbibresource{back/references.bib}
 
-\newcommand{\showcoverseal}{}        % Required for submission; comment out only to hide the cover watermark in drafts.
+% 參考文獻維持左右對齊。條目中的長網址、DOI 與 commit hash 幾乎沒有斷行點，
+% 強制對齊時 TeX 只能在撐大詞間空白與讓字串溢出右邊界之間二選一，因此需要下列設定：
+%
+% 1. 開放在字母與數字之間斷行，但把懲罰值設得很高（9000），使 TeX 仍優先斷在
+%    / 與 . 等標點處，真的排不下時才切在字元中間。
+% 2. 只在參考文獻中放寬行寬容許量，讓無法斷行的長字串改排到下一行而非溢出。
+% 3. note 欄位前放一個 \hfil：40 字元的 commit hash 完全沒有斷行點，若在其前斷行，
+%    前一行的剩餘空白會使 badness 達 10000，TeX 因而寧可讓 hash 溢出。\hfil 讓那段
+%    空白留在行末、badness 歸零，hash 便整串移到下一行；\hfilneg 在未斷行時抵銷
+%    \hfil，此時輸出與一般文字完全相同（盒子寬度與詞間膠料皆不變）。
+\setcounter{biburlnumpenalty}{9000}     % 允許在數字之間斷行（高懲罰值）
+\setcounter{biburlucpenalty}{9000}      % 允許在大寫字母之間斷行（高懲罰值）
+\setcounter{biburllcpenalty}{9000}      % 允許在小寫字母之間斷行（高懲罰值）
+\appto{\bibsetup}{\emergencystretch=3em}
+\DeclareFieldFormat{note}{\nobreak\hfil\penalty0\hfilneg#1}
 
 \begin{document}
 
@@ -36,7 +142,7 @@
 
 % 致謝與論文摘要
 % Acknowledgement and Abstract
-\input{front/acknowledgement}         % 致謝（Acknowledgement）
+\input{front/acknowledgement}       % 致謝（Acknowledgement）
 \input{front/abstract}              % 摘要（Abstract）
 
 % 生成目錄與符號列表

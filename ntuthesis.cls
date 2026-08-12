@@ -296,6 +296,29 @@
     },
     default = true,
   },
+  % 封面校徽。內頁浮水印由 watermark 控制，封面另外分開，草稿時可單獨關掉。
+  % The cover seal, kept separate from the body watermark so a draft can drop
+  % it on its own.
+  coverseal = {
+    choices = {
+      true,
+      false,
+    },
+    default = true,
+  },
+  % 審定書來源：auto 為有檔案就用檔案、沒有就自動排版；file 強制使用檔案，
+  % 找不到就報錯；typeset 一律自動排版，忽略檔案。
+  % Where the verification letter comes from: auto uses the file when it exists
+  % and typesets one when it does not, file insists on the file and errors when
+  % it is missing, typeset always sets its own and ignores the file.
+  verification = {
+    choices = {
+      auto,
+      file,
+      typeset,
+    },
+    default = auto,
+  },
   doi = {
     choices = {
       true,
@@ -380,15 +403,27 @@
     name    = oraldate,
     default = {\the\year-\two@digits{\month}-\two@digits{\day}},
   },
-  % 掃描版口試委員審定書的路徑。檔案存在時，\makeverification 以掃描檔取代
-  % 自動排版的審定書；不存在時仍排版空白簽名欄位的版本。
-  % Path to the scanned verification letter. When the file exists,
-  % \makeverification replaces the typeset letter with the scan.
-  verification = {
+  % 審定書 PDF 的路徑，是否採用由類別選項 verification 決定。
+  % Path to the verification letter PDF; the class option `verification`
+  % decides whether it is used.
+  verificationfile = {
     name    = verificationscan,
     default = {front/verification-letter.pdf},
   },
 }
+
+% [口試委員名單]
+% - \ntucommittee{name = ..., name* = ..., email = ..., title = ..., ORCID = ...}
+%
+% 這個命令不排版任何東西。名單只給 generate_tdr_upload_script.py 讀取，用來填
+% 寫 TDR 上傳表單的口試委員欄位；審定書上的簽名由委員親筆簽署，不由模板排版。
+% 每位委員呼叫一次，順序即為表單上的順序。
+%
+% Typesets nothing. The list exists only for
+% generate_tdr_upload_script.py, which reads it to fill in the TDR submission
+% form; the signatures on the letter itself are handwritten. Call it once per
+% member, in the order they should appear.
+\newcommand{\ntucommittee}[1]{}
 
 % --------------------------------------------------
 % 06 選項設定（Options Settings）
@@ -929,11 +964,11 @@
   \ntu@registerwatermarkopacity{\ntu@watermark@opacity}
 
   % Match later pages' visible position and opacity; the starred hook limits it to the cover.
-  \ifdefined\showcoverseal
+  \ifthenelse{\equal{\ntu@coverseal}{true}}{
     % Use a cover-only opacity resource so later watermark rendering is untouched.
     \ntu@registercoverwatermarkopacity{\ntu@watermark@opacity}
     \ntu@makecoverwatermark{\ntu@watermark@path}
-  \fi
+  }{}
 
   \begin{titlepage}
     \begin{singlespace}
@@ -983,11 +1018,15 @@
 % [生成口委審定書]
 % Generate the verification letter page
 %
-% 掃描檔（\ntusetup{verification} 指定的路徑）存在時改放掃描檔，
-% 不存在時排版空白簽名欄位的版本。兩者的頁碼、浮水印與 DOI 都相同。
+% 來源由類別選項 verification 決定：
+%   auto     檔案存在就用檔案，不存在則自動排版（預設）
+%   file     一律使用 \ntusetup{verificationfile} 指定的檔案，找不到就報錯
+%   typeset  一律自動排版空白簽名欄位的版本，忽略檔案
+% 三種來源的頁碼、浮水印與 DOI 都相同。
 %
-% The scan replaces the typeset letter whenever the file exists; both carry the
-% same page number, watermark, and DOI.
+% The class option `verification` picks the source: auto falls back to the
+% typeset letter when the file is absent, file insists on the file, typeset
+% ignores it. All three carry the same page number, watermark, and DOI.
 %
 \newcommand{\makeverification}{
   \clearpage
@@ -995,17 +1034,30 @@
   \ntu@setgeometry{\ntu@geometry@main}
   \pagenumbering{roman}
   \addcontentsline{toc}{chapter}{\ntu@verificationletter}
-  \IfFileExists{\ntu@verificationscan}
-    {\ntu@verification@scanned}
-    {
-      % 這行訊息與 LaTeX 找不到檔案時印出的格式相同，latexmk 會把它記成缺少的
-      % 相依檔案。日後把掃描檔放進來，直接重跑 latexmk 就會改用掃描檔，
-      % 不必先 clean。
-      % latexmk treats files reported missing this way as dependencies, so
-      % dropping the scan in later is enough to trigger a rebuild.
-      \typeout{No file \ntu@verificationscan.}
-      \ntu@verification@typeset
-    }
+  \ifthenelse{\equal{\ntu@verification}{typeset}}{
+    \ntu@verification@typeset
+  }{
+    \IfFileExists{\ntu@verificationscan}
+      {\ntu@verification@scanned}
+      {
+        \ifthenelse{\equal{\ntu@verification}{file}}{
+          \ntu@error{%
+            verification=file, but \ntu@verificationscan\space does not
+            exist.\MessageBreak
+            Put the letter there, correct \string\ntusetup{verificationfile},
+            or use verification=auto%
+          }
+        }{
+          % 這行訊息與 LaTeX 找不到檔案時印出的格式相同，latexmk 會把它記成缺少的
+          % 相依檔案。日後把掃描檔放進來，直接重跑 latexmk 就會改用掃描檔，
+          % 不必先 clean。
+          % latexmk treats files reported missing this way as dependencies, so
+          % dropping the scan in later is enough to trigger a rebuild.
+          \typeout{No file \ntu@verificationscan.}
+          \ntu@verification@typeset
+        }
+      }
+  }
 
   % 恢復預設板型
   \restoregeometry

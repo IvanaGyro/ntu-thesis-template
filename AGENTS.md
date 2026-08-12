@@ -34,11 +34,12 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 
 ## Project map
 
-- `main.tex` — entry point; class options and inclusion order. Carries a
-  `\nocite{*}` that exists only to print the example bibliography in full, and
-  is marked for deletion by real users.
-- `ntusetup.tex` — all thesis metadata, package loading, biblatex configuration.
-  The only file holding anything person-shaped.
+- `main.tex` — every style and layout setting: class options, the
+  verification-letter path, package loading, biblatex configuration, and the
+  inclusion order. Carries a `\nocite{*}` that exists only to print the example
+  bibliography in full, and is marked for deletion by real users.
+- `ntusetup.tex` — personal data only: the `\ntusetup` metadata block and the
+  `\ntucommittee` entries. Keep style out of it; that split is the point.
 - `ntuthesis.cls` — the class. Cover, verification letter, watermark, DOI
   stamp, front-matter environments, four `fontset` branches.
 - `environments.tex` — the `wherelist` environment.
@@ -96,9 +97,14 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - `fonts/` is ~72 MB, almost all of it the two 全字庫 TTFs. Adding the `Ext-B`
   or `Plus` variants would roughly double that for characters a thesis will not
   use.
-- `\makeverification` uses the file at `\ntusetup{verification}` when it
-  exists, and typesets its own letter when it does not. Both paths must keep
-  the same page number, watermark, and DOI stamp.
+- `\makeverification` picks its source from the `verification` class option
+  (`auto`/`file`/`typeset`) and its path from `\ntusetup{verificationfile}`.
+  All three paths must keep the same page number, watermark, and DOI stamp.
+- `\ntucommittee` is a no-op in the class. It exists only so
+  `generate_tdr_upload_script.py` can read the committee; nothing typesets it,
+  and the letter's signatures are handwritten. The generator hard-errors on a
+  missing field or an unrecognised 身分, and warns when `\ntusetup{advisor}`
+  disagrees with the 指導教授 entry.
 - The seal is drawn twice by design: `\makewatermark` paints it into every
   page's background, and `\ntu@makeoverlaywatermark` repaints it in the
   foreground of the verification page, where an opaque scan would otherwise

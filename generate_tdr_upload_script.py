@@ -186,6 +186,58 @@ def parse_ntusetup(path: Path) -> dict[str, str]:
     return values
 
 
+COMMITTEE_REQUIRED = ("name", "name*", "email", "title")
+COMMITTEE_TITLES = ("指導教授", "共同指導教授", "口試委員")
+
+
+def parse_committee(path: Path) -> list[dict[str, str]]:
+    """Read the \\ntucommittee entries from ntusetup.tex, in source order.
+
+    The class defines \\ntucommittee as a no-op, so this list exists purely to
+    fill in TDR's oral examination committee section.
+    """
+    text = strip_comments(path.read_text(encoding="utf-8"))
+    field = re.compile(r"([A-Za-z][\w*-]*)\s*=\s*\{")
+    members: list[dict[str, str]] = []
+
+    for entry in re.finditer(r"\\ntucommittee\s*\{", text):
+        block, _ = braced_group(text, entry.end() - 1)
+        fields: dict[str, str] = {}
+        cursor = 0
+        while match := field.search(block, cursor):
+            value, cursor = braced_group(block, match.end() - 1)
+            fields[match.group(1)] = latex_to_plain(value).strip()
+
+        position = len(members) + 1
+        missing = [key for key in COMMITTEE_REQUIRED if not fields.get(key)]
+        if missing:
+            raise CollectionError(
+                f"Committee member {position} in {path} is missing: "
+                + ", ".join(missing)
+            )
+        if fields["title"] not in COMMITTEE_TITLES:
+            raise CollectionError(
+                f"Committee member {position} has title {fields['title']!r}; "
+                f"expected one of {', '.join(COMMITTEE_TITLES)}"
+            )
+
+        members.append(
+            {
+                "nameZh": fields["name"],
+                "nameEn": fields["name*"],
+                "email": fields["email"],
+                "title": fields["title"],
+                "orcid": fields.get("ORCID", ""),
+            }
+        )
+
+    if not members:
+        raise CollectionError(f"No \\ntucommittee entries found in {path}")
+    if not any(m["title"] == "指導教授" for m in members):
+        raise CollectionError("The committee list has no 指導教授 entry")
+    return members
+
+
 def parse_language(path: Path) -> str:
     text = strip_comments(path.read_text(encoding="utf-8"))
     document = re.search(
@@ -575,6 +627,8 @@ def validate(data: dict[str, object]) -> None:
     missing = [key for key in required if not str(data.get(key, "")).strip()]
     if missing:
         raise CollectionError("Missing required field(s): " + ", ".join(missing))
+    if not data.get("committee"):
+        raise CollectionError("Missing the oral examination committee list")
     if data["semester"] not in {"1", "2"}:
         raise CollectionError("semester must be 1 or 2")
     for key in ("graduationYear", "publicationYear", "pages"):
@@ -623,7 +677,18 @@ def collect(args: argparse.Namespace) -> tuple[dict[str, object], Path]:
     root = (args.root or Path(__file__).resolve().parent).resolve()
     interactive = not args.non_interactive and sys.stdin.isatty()
     setup = parse_ntusetup(root / "ntusetup.tex")
+    committee = parse_committee(root / "ntusetup.tex")
     abstract_zh, abstract_en = extract_abstracts(root / "front" / "abstract.tex")
+
+    # The cover takes the advisor from \ntusetup, the TDR form from the
+    # committee list. Disagreement means one of the two was edited alone.
+    advisors = [m["nameZh"] for m in committee if m["title"] == "指導教授"]
+    if setup.get("advisor") and setup["advisor"] not in advisors:
+        print(
+            f"Warning: \\ntusetup advisor {setup['advisor']!r} is not the "
+            f"指導教授 in the committee list ({', '.join(advisors)})",
+            file=sys.stderr,
+        )
     if override := read_text(args.abstract_zh_file, root):
         abstract_zh = normalize_abstract(override)
     if override := read_text(args.abstract_en_file, root):
@@ -698,6 +763,7 @@ def collect(args: argparse.Namespace) -> tuple[dict[str, object], Path]:
             interactive,
         ),
         "email2": "",
+        "committee": committee,
         "language": parse_language(root / "main.tex"),
         "defenseDate": defense_date,
         "pages": choose(

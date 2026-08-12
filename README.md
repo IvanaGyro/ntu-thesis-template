@@ -47,10 +47,13 @@ When a change does not seem to take effect, `pixi run clean` and build again.
 
 ## What to edit, in order
 
+The split is deliberate: **`main.tex` holds every style and layout setting,
+`ntusetup.tex` holds nothing but personal data.**
+
 | Step | File | What goes in it |
 | --- | --- | --- |
-| 1 | `ntusetup.tex` | Title, author, student ID, advisor, department, keywords, DOI, email, ORCID. The only place personal data belongs. |
-| 2 | `main.tex` | Degree (`master`/`doctor`), language (`chinese`/`english`), `fontset`, `cjkfont`. |
+| 1 | `ntusetup.tex` | Title, author, student ID, advisor, department, keywords, DOI, email, ORCID, and the oral examination committee. The only place personal data belongs. |
+| 2 | `main.tex` | Class options, the verification-letter path, package loading, and the bibliography style. |
 | 3 | `front/abstract.tex` | Chinese and English abstracts, three pages each at most. |
 | 4 | `front/acknowledgement.tex` | 謝辭, optional, one page at most. |
 | 5 | `front/denotation.tex` | Symbol list. Ships one example per broad field — keep what fits, delete the rest. |
@@ -63,11 +66,22 @@ When a change does not seem to take effect, `pixi run clean` and build again.
 
 `front/verification-letter.pdf` ships as NTU's **official blank master's form**,
 so page `i` is already the document you need to print and get signed. The
-doctoral form is included too — point the class at it:
+doctoral form is included too — point `main.tex` at it:
 
 ```latex
-\ntusetup{ verification = {front/verification-letter-doctor.pdf} }
+\ntusetup{ verificationfile = {front/verification-letter-doctor.pdf} }
 ```
+
+The `verification` class option chooses the source:
+
+| Value | Behaviour |
+| --- | --- |
+| `auto` | Use the file when it exists, otherwise typeset a letter. The default. |
+| `file` | Always use the file; stop with an error when it is missing. |
+| `typeset` | Always typeset, ignoring the file. |
+
+The typeset letter fills in your title, author, ID, and advisor from
+`ntusetup.tex` and leaves blank signature rules.
 
 Once the letter is signed, scan it and overwrite `front/verification-letter.pdf`
 with the scan. The page number, watermark, and DOI stamp are all drawn on top
@@ -165,6 +179,14 @@ fills in NTU's TDR upload form, reading the metadata from `ntusetup.tex`,
 `main.tex`, `front/abstract.tex`, `main.toc`, and `main.pdf`. Run it after the
 final build. It prompts for anything it cannot infer, including any field still
 holding a template placeholder.
+
+The oral examination committee comes from the `\ntucommittee` entries in
+`ntusetup.tex` — one per member, each with a Chinese and English name, an email,
+a 身分 (`指導教授`, `共同指導教授`, or `口試委員`), and an optional ORCID. Nothing
+typesets them; the signatures on the letter are handwritten. TDR's committee
+fields are not publicly documented, so rather than guess at selectors and risk
+writing into the wrong ones, the generated script prints the list as a console
+table for you to enter by hand.
 
 ## Example figures
 

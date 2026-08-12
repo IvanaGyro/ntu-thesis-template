@@ -85,6 +85,35 @@
     console.log(`✅ ${name}：${values.length} 個關鍵字`);
   }
 
+  // 口試委員名單。TDR 的委員欄位長什麼樣子沒有公開文件可查，這個模板也就不去
+  // 猜它的選擇器——猜錯若剛好命中別的欄位，會安靜地寫壞資料。因此這裡只把名單
+  // 整理成表格印在 Console，供手動輸入。
+  //
+  // 若你已經知道正確的選擇器，改寫下面的迴圈即可，setValue 與 setSelect 都可直接使用。
+  //
+  // The committee section's field names are not documented anywhere public, and
+  // guessing a selector that happens to match some other field would corrupt
+  // data silently. So this prints the list for manual entry instead. If you know
+  // the real selectors, replace the loop below; setValue and setSelect are
+  // available.
+  function showCommittee(members) {
+    if (!members || members.length === 0) {
+      console.warn("⚠️ 沒有口試委員資料");
+      return;
+    }
+    console.log(`📋 口試委員 ${members.length} 位，請手動填入：`);
+    console.table(
+      members.map((member, index) => ({
+        "#": index + 1,
+        身分: member.title,
+        姓名: member.nameZh,
+        Name: member.nameEn,
+        Email: member.email,
+        ORCID: member.orcid || "",
+      }))
+    );
+  }
+
   console.log("🚀 開始填寫 NTU 論文資料");
 
   setSelect('select[name="pappertype"]', "學術論文");
@@ -114,10 +143,13 @@
   setValue("#refer", DATA.references);
   setValue("#note", DATA.note);
 
+  showCommittee(DATA.committee);
+
   window.scrollTo({ top: 0, behavior: "smooth" });
 
   console.log("================================");
   console.log("✅ 所有欄位填寫完成");
+  console.log("⚠️ 口試委員需依上表手動填入");
   console.log("⚠️ 尚未按「暫存」或「下一步」");
   console.log("⚠️ 請檢查內容後自行按按鈕");
   console.log("================================");
