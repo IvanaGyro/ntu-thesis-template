@@ -59,6 +59,17 @@ PLACEHOLDER_ORCID = ("0000-0000-0000-0000",)
 NTU_CALENDAR_URL = "https://www.aca.ntu.edu.tw/w/aca/calendar"
 HTTP_TIMEOUT_SECONDS = 20
 
+EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+ORCID_PATTERN = re.compile(r"\d{4}-\d{4}-\d{4}-\d{3}[\dX]")
+# 上傳頁面的 checkename()：名、空白，再接姓，兩者都是拉丁字母。
+# The upload page's own checkename(): a given name, whitespace, then the rest,
+# both written in Latin letters extended through Latin Extended-B.
+LATIN_LETTERS = r"A-Za-zÀ-ÖØ-öø-ɏ"
+ENGLISH_NAME_PATTERN = re.compile(rf"[{LATIN_LETTERS}-]+\s+[{LATIN_LETTERS}\s.-]+")
+
+# scripts/fetch_academic_units.py regenerates this from NTU's published list.
+ACADEMIC_UNITS_FILE = "ntu-academic-units.tex"
+
 # Official thesis-submission deadlines determine the graduation semester.
 THESIS_DEADLINES = {
     # Special announcement: https://www.aca.ntu.edu.tw/w/aca/GAADNews_25102010004349933
@@ -220,6 +231,25 @@ def parse_committee(path: Path) -> list[dict[str, str]]:
                 f"Committee member {position} has title {fields['title']!r}; "
                 f"expected one of {', '.join(COMMITTEE_TITLES)}"
             )
+        # 表單自己會擋下格式錯誤的欄位，在這裡先擋，錯誤才不會等到最後一格才跳出。
+        # The form rejects these itself; catching them here reports the entry at
+        # fault instead of a dialog after the last field is typed.
+        if not ENGLISH_NAME_PATTERN.fullmatch(fields["name*"]):
+            raise CollectionError(
+                f"Committee member {position} has name* {fields['name*']!r}; "
+                "put the given name before the family name and use Latin "
+                "letters only, as in Ming-Wen Li"
+            )
+        if not EMAIL_PATTERN.fullmatch(fields["email"]):
+            raise CollectionError(
+                f"Committee member {position} has email {fields['email']!r}, "
+                "which is not an e-mail address"
+            )
+        if fields.get("ORCID") and not ORCID_PATTERN.fullmatch(fields["ORCID"]):
+            raise CollectionError(
+                f"Committee member {position} has ORCID {fields['ORCID']!r}; "
+                "expected 0000-0000-0000-000X format"
+            )
 
         members.append(
             {
@@ -233,9 +263,81 @@ def parse_committee(path: Path) -> list[dict[str, str]]:
 
     if not members:
         raise CollectionError(f"No \\ntucommittee entries found in {path}")
-    if not any(m["title"] == "指導教授" for m in members):
-        raise CollectionError("The committee list has no 指導教授 entry")
+    # 表單只在第一個委員區塊提供「指導教授」，因此指導教授必須排在第一位。
+    # TDR offers 指導教授 only in its first committee block, so the advisor has
+    # to lead the list for the blocks and the entries to line up.
+    if members[0]["title"] != "指導教授":
+        raise CollectionError(
+            "The committee list must start with the 指導教授 entry; TDR offers "
+            "that title only in its first committee block"
+        )
+    for position, member in enumerate(members[1:], start=2):
+        if member["title"] == "指導教授":
+            raise CollectionError(
+                f"Committee member {position} is a second 指導教授; after the "
+                "first entry only 共同指導教授 and 口試委員 are allowed"
+            )
     return members
+
+
+def parse_academic_units(path: Path) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
+    """Read the college pairs and the per-college unit names from the data file.
+
+    Returns the set of (Chinese, English) college pairs and the set of
+    (college, unit) pairs. Units are keyed by the college of their own
+    language: NTU's two pages do not list identical units, so the generator
+    deliberately does not pair them across languages.
+    """
+    # The file's own header documents the two macros by example, so the
+    # comments have to go before the declarations are counted.
+    text = strip_comments(path.read_text(encoding="utf-8"))
+    colleges = {
+        (m.group(1), m.group(2))
+        for m in re.finditer(r"\\ntu@declarecollege\{([^}]*)\}\{([^}]*)\}", text)
+    }
+    units = {
+        (m.group(1), m.group(2))
+        for m in re.finditer(r"\\ntu@declareinstitute\{([^}]*)\}\{([^}]*)\}", text)
+    }
+    if not colleges or not units:
+        raise CollectionError(f"{path} contains no academic units")
+    return colleges, units
+
+
+def check_academic_units(setup: dict[str, str], root: Path) -> None:
+    """Reject a college or institute that is not one NTU publishes.
+
+    ntuthesis.cls only warns about this so that a half-filled ntusetup.tex
+    still produces a PDF. By the time an upload script is being generated the
+    names are going onto a submission, so the same checks are fatal here.
+    """
+    path = root / ACADEMIC_UNITS_FILE
+    if not path.is_file():
+        print(
+            f"Warning: {ACADEMIC_UNITS_FILE} is missing, so the college and "
+            "institute names were not checked; run "
+            "scripts/fetch_academic_units.py to restore it",
+            file=sys.stderr,
+        )
+        return
+
+    colleges, units = parse_academic_units(path)
+    college_zh, college_en = setup.get("college", ""), setup.get("college*", "")
+    if (college_zh, college_en) not in colleges:
+        raise CollectionError(
+            f"college {college_zh!r} and college* {college_en!r} are not a "
+            f"college pair in NTU's academic units; see {ACADEMIC_UNITS_FILE}"
+        )
+    for college, key, label in (
+        (college_zh, "institute", "institute"),
+        (college_en, "institute*", "institute*"),
+    ):
+        name = setup.get(key, "")
+        if (college, name) not in units:
+            raise CollectionError(
+                f"{label} {name!r} is not listed under {college!r} in NTU's "
+                f"academic units; see {ACADEMIC_UNITS_FILE}"
+            )
 
 
 def parse_language(path: Path) -> str:
@@ -678,17 +780,20 @@ def collect(args: argparse.Namespace) -> tuple[dict[str, object], Path]:
     interactive = not args.non_interactive and sys.stdin.isatty()
     setup = parse_ntusetup(root / "ntusetup.tex")
     committee = parse_committee(root / "ntusetup.tex")
+    check_academic_units(setup, root)
     abstract_zh, abstract_en = extract_abstracts(root / "front" / "abstract.tex")
 
     # The cover takes the advisor from \ntusetup, the TDR form from the
-    # committee list. Disagreement means one of the two was edited alone.
-    advisors = [m["nameZh"] for m in committee if m["title"] == "指導教授"]
-    if setup.get("advisor") and setup["advisor"] not in advisors:
-        print(
-            f"Warning: \\ntusetup advisor {setup['advisor']!r} is not the "
-            f"指導教授 in the committee list ({', '.join(advisors)})",
-            file=sys.stderr,
-        )
+    # committee list, so both names are compared: correcting one spelling alone
+    # is easy to do. The first entry is the 指導教授, which parse_committee has
+    # already checked.
+    for key, field in (("advisor", "nameZh"), ("advisor*", "nameEn")):
+        if setup.get(key) and setup[key] != committee[0][field]:
+            print(
+                f"Warning: \\ntusetup {key} {setup[key]!r} differs from the "
+                f"指導教授 in the committee list ({committee[0][field]!r})",
+                file=sys.stderr,
+            )
     if override := read_text(args.abstract_zh_file, root):
         abstract_zh = normalize_abstract(override)
     if override := read_text(args.abstract_en_file, root):
@@ -821,6 +926,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     print(f"Wrote copy-ready upload script: {output}")
     print("Review every field, then paste the entire file into the TDR DevTools console.")
+    print("Paste it again on the committee page; it fills whichever page is open.")
     print("The generated script never clicks Save or Next.")
     return 0
 

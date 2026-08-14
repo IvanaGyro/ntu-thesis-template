@@ -180,13 +180,36 @@ fills in NTU's TDR upload form, reading the metadata from `ntusetup.tex`,
 final build. It prompts for anything it cannot infer, including any field still
 holding a template placeholder.
 
-The oral examination committee comes from the `\ntucommittee` entries in
-`ntusetup.tex` — one per member, each with a Chinese and English name, an email,
-a 身分 (`指導教授`, `共同指導教授`, or `口試委員`), and an optional ORCID. Nothing
-typesets them; the signatures on the letter are handwritten. TDR's committee
-fields are not publicly documented, so rather than guess at selectors and risk
-writing into the wrong ones, the generated script prints the list as a console
-table for you to enter by hand.
+The generated script fills **both** TDR pages — paste it once on 輸入論文資料 and
+again on 設定口試委員名單, and it detects which one is open.
+
+The committee comes from the `\ntucommittee` entries in `ntusetup.tex`, one per
+member, each with a Chinese and English name, an email, a 身分, and an optional
+ORCID. Nothing typesets them; the signatures on the letter are handwritten.
+
+**The 指導教授 must be first.** TDR offers that 身分 only in its first committee
+block, so the entries and the blocks line up only in that order; every entry
+after it must be `共同指導教授` or `口試委員`.
+
+## Checks on your data
+
+Two things are checked against sources rather than taken on trust:
+
+| Checked | While building the PDF | While generating the TDR script |
+| --- | --- | --- |
+| `college`/`college*` and `institute`/`institute*` are names NTU publishes | warning | error |
+| The 身分 order in `\ntucommittee` | warning | error |
+
+The build only warns, because a half-filled `ntusetup.tex` should still produce
+a PDF while you are writing. By the time you are generating an upload script the
+names are going onto a submission, so the same problems become fatal.
+
+The official names live in `ntu-academic-units.tex`, generated from
+[NTU's list of academic units](https://www.ntu.edu.tw/academics/academics_list.html)
+and its [English counterpart](https://www.ntu.edu.tw/english/academics/academics_list.html).
+Refresh it with `pixi run units` when NTU reorganises a college. The two pages
+do not list identical departments, so each language is checked against its own
+list rather than paired across languages.
 
 ## Example figures
 
