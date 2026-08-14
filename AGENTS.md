@@ -100,11 +100,39 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - `\makeverification` picks its source from the `verification` class option
   (`auto`/`file`/`typeset`) and its path from `\ntusetup{verificationfile}`.
   All three paths must keep the same page number, watermark, and DOI stamp.
-- `\ntucommittee` is a no-op in the class. It exists only so
-  `generate_tdr_upload_script.py` can read the committee; nothing typesets it,
-  and the letter's signatures are handwritten. The generator hard-errors on a
-  missing field or an unrecognised 身分, and warns when `\ntusetup{advisor}`
-  disagrees with the 指導教授 entry.
+- `\ntucommittee` typesets nothing. It exists so
+  `generate_tdr_upload_script.py` can read the committee; the letter's
+  signatures are handwritten. TDR offers 指導教授 only in its first committee
+  block, so that entry must lead the list.
+- The same rules are enforced twice on purpose: `ntuthesis.cls` only *warns*
+  about a bad 身分 order or an unpublished college/institute, so a half-filled
+  `ntusetup.tex` still builds, while `generate_tdr_upload_script.py` raises on
+  them, because by then the names are going onto a submission. Keep both sides
+  in step when changing either.
+- `ntu-academic-units.tex` is committed and is what both validators read; the
+  build never fetches anything. `scripts/fetch_academic_units.py`
+  (`pixi run units`) regenerates it from NTU's published lists on the rare
+  occasion they change. College names are bilingual pairs; unit names are
+  registered under the college of their own language, because the two pages do
+  not list identical departments — pairing them by position attaches the wrong
+  translation. Equal counts do not prove equal order, so the script prints any
+  change to the college pairing for a human to confirm.
+- 98 of the unit names contain `&`, which `ntusetup.tex` has to spell `\&` for
+  the cover to typeset. `\&` is a macro, and expanding it while building a
+  control sequence name raises `Missing \endcsname` and kills the build, so the
+  data file stores the escaped form and both sides of every lookup are
+  `\detokenize`d. Note the declarations receive literal text while the checks
+  receive macros: `\detokenize{#1}` for the former, `\expandafter\detokenize
+  \expandafter{#1}` for the latter. Mixing them makes the key the literal string
+  `\ntu@college`, and every check then passes silently.
+- The class reads the data file inside `\makeatletter` at `\AtBeginDocument`,
+  since `@` is not a letter there.
+- `\ntucommittee` parses with `\setkeys*`, so an unknown key is kept rather than
+  raising. A typo like `titel` must not stop a thesis from compiling.
+- The TDR selectors in `tdr_upload_template.js` were read off the real
+  「設定口試委員名單」page. Field names repeat once per member, so every lookup is
+  scoped to its own `.advisor_layout` block — never `document.querySelector` or
+  an id.
 - The seal is drawn twice by design: `\makewatermark` paints it into every
   page's background, and `\ntu@makeoverlaywatermark` repaints it in the
   foreground of the verification page, where an opaque scan would otherwise
