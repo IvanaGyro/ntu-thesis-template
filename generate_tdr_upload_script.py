@@ -41,22 +41,15 @@ class CollectionError(ValueError):
     pass
 
 
-# TDR 的系所下拉選單偶爾與 ntusetup.tex 裡的所名不同（例如「物理學研究所」在
-# TDR 上是「物理學系」）。遇到對不起來的情形時在這裡加一組對應即可，
-# 或改用 --department 直接指定。
 # TDR's department dropdown does not always use the same wording as
 # ntusetup.tex. Add a mapping here when they disagree, or pass --department.
 DEPARTMENT_ALIASES: dict[str, str] = {
     # "物理學研究所": "物理學系",
 }
-# ntusetup.tex 與 ntuthesis.cls 出廠時填的假資料。值還停在這些字串代表使用者
-# 沒改過，此時改為詢問，以免把範例資料送進 TDR。
 # The dummy values ntusetup.tex and ntuthesis.cls ship with. A field still
 # holding one of these was never edited, so prompt instead of submitting it.
 PLACEHOLDER_EMAIL = ("Email Address", "stitch@ntu.edu.tw")
 PLACEHOLDER_ORCID = ("0000-0000-0000-0000",)
-# 模板出廠時的口試委員範例。這份名單會被直接寫進 TDR 表單，不能讓沒改過的範例
-# 送出去，所以在這裡擋下來。
 # The committee the template ships with. These names go straight into the real
 # TDR form, so an unedited example must never reach it.
 PLACEHOLDER_COMMITTEE = frozenset(
@@ -77,7 +70,6 @@ HTTP_TIMEOUT_SECONDS = 20
 
 EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 ORCID_PATTERN = re.compile(r"\d{4}-\d{4}-\d{4}-\d{3}[\dX]")
-# 上傳頁面的 checkename()：名、空白，再接姓，兩者都是拉丁字母。
 # The upload page's own checkename(): a given name, whitespace, then the rest,
 # both written in Latin letters extended through Latin Extended-B.
 LATIN_LETTERS = r"A-Za-zÀ-ÖØ-öø-ɏ"
@@ -247,7 +239,6 @@ def parse_committee(path: Path) -> list[dict[str, str]]:
                 f"Committee member {position} has title {fields['title']!r}; "
                 f"expected one of {', '.join(COMMITTEE_TITLES)}"
             )
-        # 表單自己會擋下格式錯誤的欄位，在這裡先擋，錯誤才不會等到最後一格才跳出。
         # The form rejects these itself; catching them here reports the entry at
         # fault instead of a dialog after the last field is typed.
         if not ENGLISH_NAME_PATTERN.fullmatch(fields["name*"]):
@@ -279,7 +270,6 @@ def parse_committee(path: Path) -> list[dict[str, str]]:
 
     if not members:
         raise CollectionError(f"No \\ntucommittee entries found in {path}")
-    # 表單只在第一個委員區塊提供「指導教授」，因此指導教授必須排在第一位。
     # TDR offers 指導教授 only in its first committee block, so the advisor has
     # to lead the list for the blocks and the entries to line up.
     if members[0]["title"] != "指導教授":
@@ -293,8 +283,6 @@ def parse_committee(path: Path) -> list[dict[str, str]]:
                 f"Committee member {position} is a second 指導教授; after the "
                 "first entry only 共同指導教授 and 口試委員 are allowed"
             )
-    # 這份名單會被腳本直接填進 TDR，不像先前只是印出來給人抄，所以留著範例
-    # 委員就會把 Lilo 和 Nani 送進真正的表單。
     # The script now types this list straight into TDR rather than printing it
     # for a human to copy, so an unedited example would put Lilo and Nani on a
     # real submission.
@@ -323,12 +311,17 @@ def parse_academic_units(path: Path) -> tuple[set[tuple[str, str]], set[tuple[st
     # The file's own header documents the two macros by example, so the
     # comments have to go before the declarations are counted.
     text = strip_comments(path.read_text(encoding="utf-8"))
+    # The declarations store names the way ntusetup.tex has to spell them, with
+    # \& for the 98 units whose name contains an ampersand, because the class
+    # compares them as TeX text. parse_ntusetup runs its values through
+    # latex_to_plain, so the declarations have to be normalised the same way or
+    # every one of those names is rejected as unknown.
     colleges = {
-        (m.group(1), m.group(2))
+        (latex_to_plain(m.group(1)), latex_to_plain(m.group(2)))
         for m in re.finditer(r"\\ntu@declarecollege\{([^}]*)\}\{([^}]*)\}", text)
     }
     units = {
-        (m.group(1), m.group(2))
+        (latex_to_plain(m.group(1)), latex_to_plain(m.group(2)))
         for m in re.finditer(r"\\ntu@declareinstitute\{([^}]*)\}\{([^}]*)\}", text)
     }
     if not colleges or not units:
@@ -345,8 +338,6 @@ def check_academic_units(setup: dict[str, str], root: Path) -> None:
     """
     path = root / ACADEMIC_UNITS_FILE
     if not path.is_file():
-        # 檔案是版本控管的一部分，不見了就代表檢查根本沒跑。放行等於讓沒驗證過
-        # 的系所名稱送進 TDR，這正是這個函式要防的事。
         # The file is tracked, so its absence means the check never ran.
         # Continuing anyway would put unverified unit names onto a submission,
         # which is the thing this function exists to prevent.
@@ -887,7 +878,6 @@ def collect(args: argparse.Namespace) -> tuple[dict[str, object], Path]:
         ),
         "authorZh": setup.get("author", ""),
         "authorEn": setup.get("author*", ""),
-        # ORCID 與 email 來自 ntusetup.tex；沒填或還留著預設佔位字串時改為詢問。
         # Both come from ntusetup.tex; an empty or still-placeholder value falls
         # through to the same prompt every other uncertain field uses.
         "orcid": choose(

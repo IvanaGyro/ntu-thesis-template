@@ -116,9 +116,6 @@ def main() -> None:
                 file=sys.stderr,
             )
 
-    # 兩頁的院系順序若有一邊改動而數量不變，數量檢查是看不出來的，配對就會整批
-    # 錯掉。因此把與前一版不同的配對列出來，讓人確認過再提交。
-    #
     # Equal counts do not prove equal order: if one page reorders its colleges,
     # every pair silently shifts and the generated file becomes a confidently
     # wrong source for both validators. Print whatever differs from the
