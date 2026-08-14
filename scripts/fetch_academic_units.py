@@ -36,10 +36,14 @@ EN_URL = "https://www.ntu.edu.tw/english/academics/academics_list.html"
 OUTPUT = Path(__file__).resolve().parents[1] / "ntu-academic-units.tex"
 
 # Colleges are h2 headings carrying the site's `searchcontent` marker class and
-# departments are links carrying the same marker, both in document order.
+# departments are links carrying the same marker, both in document order. The
+# marker is matched wherever it appears in the class list: the site puts it
+# first today, but a template change that prepends another class would
+# otherwise stop matching the links while still matching the headings, and the
+# result would be a file full of colleges with no units under them.
 SECTION = re.compile(
     r'<h2[^>]*class="[^"]*searchcontent[^"]*"[^>]*>(.*?)</h2>'
-    r'|<a[^>]*class="searchcontent[^"]*"[^>]*>(.*?)</a>',
+    r'|<a[^>]*class="[^"]*searchcontent[^"]*"[^>]*>(.*?)</a>',
     re.S,
 )
 
@@ -104,6 +108,17 @@ def main() -> None:
         sys.exit(f"college counts differ: {len(zh)} Chinese, {len(en)} English")
     if not zh:
         sys.exit("no colleges found; the page markup has probably changed")
+    # A college with nothing under it means the department selector stopped
+    # matching. Writing that out would replace the validator's source with a
+    # file that rejects every institute, so refuse before overwriting it.
+    empty = [c for c, units in zh.items() if not units]
+    empty += [c for c, units in en.items() if not units]
+    if empty:
+        sys.exit(
+            "no units found under: "
+            + ", ".join(empty)
+            + "; the page markup has probably changed"
+        )
 
     for (zh_college, zh_depts), (en_college, en_depts) in zip(
         zh.items(), en.items()

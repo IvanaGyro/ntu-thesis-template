@@ -329,6 +329,18 @@ def parse_academic_units(path: Path) -> tuple[set[tuple[str, str]], set[tuple[st
     return colleges, units
 
 
+def collapse_spaces(text: str) -> str:
+    """Normalise whitespace the way TeX does when it tokenises a file.
+
+    TeX turns any run of spaces and newlines into a single space, so
+    "Institute of  Industrial Engineering" reaches the class as the official
+    name and the build raises no warning. Comparing the raw text here instead
+    would reject what the build just accepted, leaving the two validators
+    disagreeing about the same file.
+    """
+    return " ".join(text.split())
+
+
 def check_academic_units(setup: dict[str, str], root: Path) -> None:
     """Reject a college or institute that is not one NTU publishes.
 
@@ -348,7 +360,10 @@ def check_academic_units(setup: dict[str, str], root: Path) -> None:
         )
 
     colleges, units = parse_academic_units(path)
-    college_zh, college_en = setup.get("college", ""), setup.get("college*", "")
+    colleges = {(collapse_spaces(a), collapse_spaces(b)) for a, b in colleges}
+    units = {(collapse_spaces(a), collapse_spaces(b)) for a, b in units}
+    college_zh = collapse_spaces(setup.get("college", ""))
+    college_en = collapse_spaces(setup.get("college*", ""))
     if (college_zh, college_en) not in colleges:
         raise CollectionError(
             f"college {college_zh!r} and college* {college_en!r} are not a "
@@ -358,7 +373,7 @@ def check_academic_units(setup: dict[str, str], root: Path) -> None:
         (college_zh, "institute", "institute"),
         (college_en, "institute*", "institute*"),
     ):
-        name = setup.get(key, "")
+        name = collapse_spaces(setup.get(key, ""))
         if (college, name) not in units:
             raise CollectionError(
                 f"{label} {name!r} is not listed under {college!r} in NTU's "
