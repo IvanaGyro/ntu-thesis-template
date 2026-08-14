@@ -55,6 +55,22 @@ DEPARTMENT_ALIASES: dict[str, str] = {
 # holding one of these was never edited, so prompt instead of submitting it.
 PLACEHOLDER_EMAIL = ("Email Address", "stitch@ntu.edu.tw")
 PLACEHOLDER_ORCID = ("0000-0000-0000-0000",)
+# 模板出廠時的口試委員範例。這份名單會被直接寫進 TDR 表單，不能讓沒改過的範例
+# 送出去，所以在這裡擋下來。
+# The committee the template ships with. These names go straight into the real
+# TDR form, so an unedited example must never reach it.
+PLACEHOLDER_COMMITTEE = frozenset(
+    {
+        "lilo@ntu.edu.tw",
+        "nani@ntu.edu.tw",
+        "jumba@example.edu.tw",
+        "pleakley@example.edu.tw",
+        "Lilo Pelekai",
+        "Nani Pelekai",
+        "Jumba Jookiba",
+        "Wendy Pleakley",
+    }
+)
 
 NTU_CALENDAR_URL = "https://www.aca.ntu.edu.tw/w/aca/calendar"
 HTTP_TIMEOUT_SECONDS = 20
@@ -277,6 +293,22 @@ def parse_committee(path: Path) -> list[dict[str, str]]:
                 f"Committee member {position} is a second 指導教授; after the "
                 "first entry only 共同指導教授 and 口試委員 are allowed"
             )
+    # 這份名單會被腳本直接填進 TDR，不像先前只是印出來給人抄，所以留著範例
+    # 委員就會把 Lilo 和 Nani 送進真正的表單。
+    # The script now types this list straight into TDR rather than printing it
+    # for a human to copy, so an unedited example would put Lilo and Nani on a
+    # real submission.
+    untouched = [
+        f"{m['nameEn']} <{m['email']}>"
+        for m in members
+        if m["nameEn"] in PLACEHOLDER_COMMITTEE or m["email"] in PLACEHOLDER_COMMITTEE
+    ]
+    if untouched:
+        raise CollectionError(
+            "The committee still holds the template's example members: "
+            + "; ".join(untouched)
+            + ". Replace them in ntusetup.tex with your own committee"
+        )
     return members
 
 
@@ -313,13 +345,16 @@ def check_academic_units(setup: dict[str, str], root: Path) -> None:
     """
     path = root / ACADEMIC_UNITS_FILE
     if not path.is_file():
-        print(
-            f"Warning: {ACADEMIC_UNITS_FILE} is missing, so the college and "
-            "institute names were not checked; run "
-            "scripts/fetch_academic_units.py to restore it",
-            file=sys.stderr,
+        # 檔案是版本控管的一部分，不見了就代表檢查根本沒跑。放行等於讓沒驗證過
+        # 的系所名稱送進 TDR，這正是這個函式要防的事。
+        # The file is tracked, so its absence means the check never ran.
+        # Continuing anyway would put unverified unit names onto a submission,
+        # which is the thing this function exists to prevent.
+        raise CollectionError(
+            f"{ACADEMIC_UNITS_FILE} is missing, so the college and institute "
+            "names cannot be checked; restore it with "
+            "scripts/fetch_academic_units.py"
         )
-        return
 
     colleges, units = parse_academic_units(path)
     college_zh, college_en = setup.get("college", ""), setup.get("college*", "")

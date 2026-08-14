@@ -204,12 +204,19 @@ The build only warns, because a half-filled `ntusetup.tex` should still produce
 a PDF while you are writing. By the time you are generating an upload script the
 names are going onto a submission, so the same problems become fatal.
 
-The official names live in `ntu-academic-units.tex`, generated from
+The generator also refuses to run while the committee still holds the
+template's example members, since it now types the list straight into TDR.
+
+The official names live in `ntu-academic-units.tex`, which is committed — the
+build never goes online. It was generated from
 [NTU's list of academic units](https://www.ntu.edu.tw/academics/academics_list.html)
-and its [English counterpart](https://www.ntu.edu.tw/english/academics/academics_list.html).
-Refresh it with `pixi run units` when NTU reorganises a college. The two pages
-do not list identical departments, so each language is checked against its own
-list rather than paired across languages.
+and its [English counterpart](https://www.ntu.edu.tw/english/academics/academics_list.html);
+`pixi run units` refreshes it on the rare occasion NTU reorganises a college.
+The two pages do not list identical departments, so each language is checked
+against its own list rather than paired across languages.
+
+Names containing `&` — 98 of the English ones do — must be written `\&` in
+`ntusetup.tex`, exactly as they would be to typeset on the cover.
 
 ## Example figures
 

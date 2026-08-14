@@ -432,7 +432,14 @@
 % unsettled while the thesis is being written, and that should not stop a PDF
 % from building. generate_tdr_upload_script.py enforces the same rules as hard
 % errors when it generates the upload script.
-\RequirePackage{keyval}
+% \setkeys 的星號版本會把不認識的鍵留著而不報錯。少打一個字母（titel）或多加
+% 一個只給產生器用的欄位，都不該讓論文編不出來——這裡只負責警告，真正的把關在
+% generate_tdr_upload_script.py。
+% The starred \setkeys keeps unknown keys instead of raising an error. A typo
+% such as titel, or an extra field meant only for the generator, must not stop a
+% thesis from compiling: this file only warns, and
+% generate_tdr_upload_script.py is what enforces the rules.
+\RequirePackage{xkeyval}
 \define@key{ntu@cmt}{name}{}
 \define@key{ntu@cmt}{name*}{}
 \define@key{ntu@cmt}{email}{}
@@ -442,7 +449,7 @@
 \newcounter{ntu@cmt@count}
 \newcommand{\ntucommittee}[1]{%
   \def\ntu@cmt@title{}%
-  \setkeys{ntu@cmt}{#1}%
+  \setkeys*{ntu@cmt}{#1}%
   \stepcounter{ntu@cmt@count}%
   % TDR 只在第一個委員區塊提供「指導教授」，因此指導教授必須排在第一位。
   % TDR offers 指導教授 only in its first committee block, so the advisor has to
@@ -480,18 +487,54 @@
 % pages do not list identical units and pairing them would attach the wrong
 % translation. The checks are skipped when the file is absent, so the template
 % still builds without it.
+% 單位名稱裡有 98 個含有 &（例如 College of Electrical Engineering \& Computer
+% Science）。使用者在 ntusetup.tex 必須寫成 \&，否則封面排不出來；但 \& 是個巨集，
+% 直接放進 \csname 會被展開而報 Missing \endcsname，整份論文就編不出來。
+% 因此鍵值兩邊都先 \detokenize 成字元再比對，比的是使用者實際打的字面文字。
+%
+% 98 of the unit names contain an ampersand. Written into ntusetup.tex it has to
+% be \&, or the cover will not typeset — but \& is a macro, and expanding it
+% while building a control sequence name raises Missing \endcsname and takes the
+% whole document down. Both sides are therefore detokenized into characters
+% first, so the comparison is over the text as typed.
+% 資料檔傳進來的是字面文字，檢查時傳進來的是巨集（\ntu@college 等），兩者取得
+% 字串的方式不同：前者直接 \detokenize，後者要先展開一層。混用會讓鍵值變成
+% 「\ntu@college」這串字，檢查便永遠通過。
+%
+% The declarations receive literal text while the checks receive macros
+% (\ntu@college and friends), so they need different expansion: detokenize the
+% literal directly, expand the macro once first. Mixing them up turns the key
+% into the string "\ntu@college" and every check silently passes.
+\newcommand{\ntu@setflag}{%
+  \expandafter\global\expandafter\let\csname\ntu@unit@key\endcsname\@empty
+}
+\newcommand{\ntu@literalkey}[3]{%
+  \edef\ntu@unit@key{#1>\detokenize{#2}>\detokenize{#3}}%
+}
+\newcommand{\ntu@macrokey}[2]{%
+  \edef\ntu@unit@key{#1>\expandafter\detokenize\expandafter{#2}}%
+}
+\newcommand{\ntu@macrokeyii}[3]{%
+  \edef\ntu@unit@key{%
+    #1>\expandafter\detokenize\expandafter{#2}%
+      >\expandafter\detokenize\expandafter{#3}%
+  }%
+}
+
 \newcommand{\ntu@declarecollege}[2]{%
-  \expandafter\gdef\csname ntu@college>#1>#2\endcsname{}%
-  \expandafter\gdef\csname ntu@collegename>#1\endcsname{}%
-  \expandafter\gdef\csname ntu@collegename>#2\endcsname{}%
+  \ntu@literalkey{ntu@college}{#1}{#2}\ntu@setflag
+  \edef\ntu@unit@key{ntu@collegename>\detokenize{#1}}\ntu@setflag
+  \edef\ntu@unit@key{ntu@collegename>\detokenize{#2}}\ntu@setflag
 }
 \newcommand{\ntu@declareinstitute}[2]{%
-  \expandafter\gdef\csname ntu@institute>#1>#2\endcsname{}%
+  \ntu@literalkey{ntu@institute}{#1}{#2}\ntu@setflag
 }
 
 \newcommand{\ntu@checkunit}[3]{%
-  \ifcsname ntu@institute>#1>#2\endcsname\else
-    \ifcsname ntu@collegename>#1\endcsname
+  \ntu@macrokeyii{ntu@institute}{#1}{#2}%
+  \expandafter\ifcsname\ntu@unit@key\endcsname\else
+    \ntu@macrokey{ntu@collegename}{#1}%
+    \expandafter\ifcsname\ntu@unit@key\endcsname
       \ntu@warning{%
         institute#3 '#2' is not listed under '#1' in NTU's academic
         units\MessageBreak
@@ -510,7 +553,8 @@
     \makeatletter
     \input{ntu-academic-units}%
     \makeatother
-    \ifcsname ntu@college>\ntu@college>\ntu@college@en\endcsname\else
+    \ntu@macrokeyii{ntu@college}{\ntu@college}{\ntu@college@en}%
+    \expandafter\ifcsname\ntu@unit@key\endcsname\else
       \ntu@warning{%
         college '\ntu@college' and college* '\ntu@college@en' are not a
         college pair in NTU's academic units\MessageBreak
