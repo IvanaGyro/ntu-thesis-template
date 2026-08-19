@@ -326,6 +326,16 @@
     },
     default = true,
   },
+  % 灰階列印：引用編號、網址與 DOI 改用內文顏色，供非圖片頁面以灰階印表機列印。
+  % Grayscale printing: paint the citation labels, URLs, and DOI in the body
+  % text color, for printing the non-picture pages on a grayscale printer.
+  grayprint = {
+    choices = {
+      true,
+      false,
+    },
+    default = false,
+  },
 }
 
 % [設定檔案]
@@ -859,6 +869,14 @@
 
 % [顏色設定]
 %
+% 內文顏色。連結設定以它為基準，grayprint = true 時把引用編號、網址與 DOI 都塗成
+% 這個顏色；改內文顏色時只需要改這一行。
+%
+% The body text color. The link settings refer to it, so grayprint = true paints
+% the citation labels, the URLs, and the DOI in exactly the color the body text
+% uses. Changing the body text color means changing this one line.
+%
+\colorlet{ntu@color@text}{black}
 
 % [版面大小]
 %
@@ -872,11 +890,34 @@
 
 % [連結設定]
 %
+% grayprint = false（預設）維持模板原本的顏色：引用編號為綠色，網址與 DOI 為洋紅色
+% （magenta，cmyk 0,1,0,0）。
+%
+% grayprint = true 供灰階列印非圖片頁面使用：引用編號、網址與 DOI 全部改成與內文
+% 相同的顏色，避免灰階印表機把綠色與洋紅色印成比內文淺的灰。連結仍然可以點選，
+% 圖片顏色也不受影響。
+%
+% Link colors. With grayprint = false (the default) they stay as the template
+% draws them: green citation labels, magenta URLs and DOIs.
+%
+% grayprint = true is for printing the text pages on a grayscale printer: the
+% citation labels, the URLs, and the DOI all take the text color, so a grayscale
+% printer cannot render them lighter than the surrounding text. The links stay
+% clickable and the figures keep their colors.
+%
+\ifthenelse{\equal{\ntu@grayprint}{true}}{
+  \colorlet{ntu@color@cite}{ntu@color@text}
+  \colorlet{ntu@color@url}{ntu@color@text}
+}{
+  \colorlet{ntu@color@cite}{green}
+  \colorlet{ntu@color@url}{magenta}
+}
+
 \hypersetup{
   colorlinks,
-  linkcolor=black,
-  anchorcolor=blue,
-  citecolor=green
+  linkcolor=ntu@color@text,
+  citecolor=ntu@color@cite,
+  urlcolor=ntu@color@url
 }
 
 % [目錄格式]
