@@ -152,6 +152,29 @@ From 國立臺灣大學碩、博士學位論文格式規範 (112學年度第1學
 
 Departments may add their own rules on top of these — check with your 系所.
 
+## Grayscale printing of the text pages
+
+The class colors the citation labels green and the URLs and the per-page DOI
+stamp magenta. Printing those pages on a grayscale printer turns the citation
+labels into a mid gray that is harder to read than the text around them. The
+`grayprint` class option in `main.tex` prepares the PDF for that printer:
+
+```latex
+\documentclass[
+  grayprint = true,                 % grayprint = true | false
+]{ntuthesis}
+```
+
+| Element | `grayprint = false` (default) | `grayprint = true` |
+| --- | --- | --- |
+| Citation labels (`\cite`) | green | the text color |
+| URLs and the DOI stamp | magenta | the text color |
+| Figures | unchanged | unchanged |
+
+The text color is `\colorlet{ntu@color@text}{black}` in `ntuthesis.cls`, the one
+line to change if the body text ever stops being black. Links stay clickable
+either way, and figures keep their colors — print those pages in color.
+
 ## Submission
 
 `pixi run protect` writes `main-protected.pdf` from `main.pdf`: an empty user
