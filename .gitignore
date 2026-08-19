@@ -22,6 +22,7 @@ __pycache__/
 
 # Compiled thesis (figure PDFs in figures/ stay tracked)
 /main.pdf
+/main-cover.pdf
 /main-protected.pdf
 
 # Proprietary fonts a user drops in for fontset=template belong to them, not to

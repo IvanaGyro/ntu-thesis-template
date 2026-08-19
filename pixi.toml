@@ -23,6 +23,7 @@ setup = { cmd = "python scripts/tex_toolchain.py setup", description = "Install 
 doctor = { cmd = "python scripts/tex_toolchain.py doctor", description = "Check the rootless TinyTeX installation" }
 build = { cmd = "python scripts/tex_toolchain.py build", depends-on = ["setup"], description = "Build main.pdf with XeLaTeX, Biber, and minted" }
 clean = { cmd = "python scripts/tex_toolchain.py clean", description = "Remove LaTeX build artifacts" }
+cover = { cmd = "python scripts/extract_cover.py", description = "Write main-cover.pdf: page 1 of main.pdf alone, stripped of the document-wide objects a cover does not need" }
 protect = { cmd = "python scripts/protect_pdf.py", description = "Write main-protected.pdf: readable by anyone, editing and copying locked behind an owner password" }
 units = { cmd = "python scripts/fetch_academic_units.py", description = "Refresh ntu-academic-units.tex from NTU's published list of academic units" }
 figures = { cmd = "python scripts/make_example_figures.py", description = "Regenerate the example plots in figures/ (the PDFs are committed; this is not part of build)" }

@@ -175,6 +175,31 @@ The text color is `\colorlet{ntu@color@text}{black}` in `ntuthesis.cls`, the one
 line to change if the body text ever stops being black. Links stay clickable
 either way, and figures keep their colors — print those pages in color.
 
+## Cover page as a separate PDF
+
+NTU asks for the cover (`封面`) as its own file alongside the thesis.
+`pixi run cover` reads `main.pdf` and writes `main-cover.pdf`:
+
+```bash
+pixi run cover                          # main.pdf -> main-cover.pdf
+pixi run cover -- --output front.pdf    # other input, output, or options
+```
+
+Copying page one alone leaves the objects that describe a whole thesis
+behind: the outline tree, the named destinations, the page labels, the
+opening action, and the annotations and links of the copied page. The two
+embedded fonts are then rewritten with only the glyphs the cover prints, and
+everything left unreferenced is garbage collected, which cuts the cover down
+to a small fraction of the whole thesis's file size (the example thesis in
+this template goes from 490 kB to about 96 kB).
+
+The script refuses to report success until the cover matches page one of
+`main.pdf` in every respect it can measure: page and crop box, rotation, the
+rendered pixels at 300 dpi (`--dpi` raises that), the extracted text, every
+glyph with its font, size, color, and position, the vector drawings, and the
+pixels of every embedded image. Like `protect`, it never runs as part of
+`pixi run build`.
+
 ## Submission
 
 `pixi run protect` writes `main-protected.pdf` from `main.pdf`: an empty user
