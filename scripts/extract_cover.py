@@ -139,6 +139,8 @@ def verify(source_path: Path, target: Path, dpi: int) -> None:
         cover_page = cover[0]
         if cover_page.first_annot is not None:
             raise RuntimeError(f"{target.name} still carries annotations.")
+        if cover_page.first_widget is not None:
+            raise RuntimeError(f"{target.name} still carries form fields.")
         if cover_page.get_links():
             raise RuntimeError(f"{target.name} still carries links.")
 
@@ -210,6 +212,7 @@ def extract(source_path: Path, target: Path, dpi: int) -> None:
                 to_page=COVER_PAGE,
                 annots=False,
                 links=False,
+                widgets=False,
             )
             strip_document_furniture(cover)
             # MuPDF rewrites the embedded font programs with only the glyphs
