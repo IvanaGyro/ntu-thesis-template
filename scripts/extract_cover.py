@@ -216,12 +216,13 @@ def extract(source_path: Path, target: Path, dpi: int) -> None:
             # this page uses; the thesis-wide subsets are the bulk of a cover.
             cover.subset_fonts()
             cover.set_metadata(source.metadata)
-            # clean=True re-serializes content streams through float32, which
-            # nudges bezier control points on curve-heavy art (e.g. the cover
-            # seal) by fractions of a point -- enough to flip a handful of
-            # antialiased pixels and fail the pixel-exact check below.
-            # garbage=4 already does the size-reducing work here, so clean is
-            # left off rather than loosening what "exact" means.
+            # clean=True collapses chained `cm` transforms (e.g. the three
+            # nested ones placing the cover seal) into one matrix and
+            # re-serializes it at 4 decimal digits, rounding the translation
+            # by ~1e-4pt -- enough to flip a handful of antialiased pixels on
+            # curve-heavy art and fail the pixel-exact check below. garbage=4
+            # already does the size-reducing work here, so clean is left off
+            # rather than loosening what "exact" means.
             cover.save(target, garbage=4, deflate=True)
     logging.info("Wrote %s", target)
 
