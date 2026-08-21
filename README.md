@@ -200,6 +200,48 @@ glyph with its font, size, color, and position, the vector drawings, and the
 pixels of every embedded image. Like `protect`, it never runs as part of
 `pixi run build`.
 
+## Spine artwork (書側)
+
+The bindery letters the spine, and to do that it needs the artwork at the
+finished book's exact thickness. `pixi run spine` measures the thesis and
+writes four files, an editable ODT and a print-ready PDF for each binding:
+
+```bash
+pixi run spine                          # main.pdf -> main-spine-{paperback,hardcover}.{odt,pdf}
+pixi run spine -- --binding hardcover   # one binding only
+pixi run spine -- --spine-width 8       # a thickness you measured yourself, in mm
+```
+
+The width comes from `main.pdf`'s own page count:
+
+| Step | Default | Option |
+| --- | --- | --- |
+| Sheets of paper | one per page below 80 pages, one per two pages from there up | `--sides single \| double` |
+| Text block | sheets × 0.10 mm, 80 磅道林紙 at 10 條 | `--paper-thickness MM` |
+| 平裝 | + 1 mm for the cover and the glue | `--binding-allowance MM` |
+| 精裝 | 平裝 + 4 mm of board | |
+| Rounding | up to the next whole millimetre | `--spine-width MM` overrides the lot |
+
+The 4 mm between the two bindings is the gap between NTU's own 8 mm 平裝 and
+12 mm 精裝 samples. Once you have a bound copy in hand, measure it and pass
+`--spine-width`; a real book beats a sum.
+
+The layout follows NTU's official spine form to the row: 國立臺灣大學 and the
+institute side by side at the head in 真正直書 (true vertical setting), then
+碩士論文 or 博士論文 at 12 pt, the title and 「作者　撰」 at 14 pt, and the ROC
+year over the month at the foot. Everything but the year is set vertically.
+A long institute name, a long title or a narrow spine makes a block set
+smaller rather than run off the artwork, and the run reports every size it
+had to shrink.
+
+Both files carry a subset of the very face `main.pdf` sets Chinese in —
+whichever `fontset` and `cjkfont` in `main.tex` selected — so the spine
+matches the cover and a print shop needs nothing installed. The PDF is drawn
+rather than converted, so the ODT and the PDF agree without an office suite
+in the toolchain: opening the ODT in LibreOffice puts every character within
+0.11 mm of where the PDF has it. Like `cover` and `protect`, this never runs
+as part of `pixi run build`.
+
 ## Submission
 
 `pixi run protect` writes `main-protected.pdf` from `main.pdf`: an empty user
