@@ -204,13 +204,16 @@ pixels of every embedded image. Like `protect`, it never runs as part of
 
 The bindery letters the spine, and to do that it needs the artwork at the
 finished book's exact thickness. `pixi run spine` measures the thesis and
-writes four files, an editable ODT and a print-ready PDF for each binding:
+writes an editable ODT and a print-ready PDF for each binding:
 
 ```bash
 pixi run spine                          # main.pdf -> main-spine-{paperback,hardcover}.{odt,pdf}
+pixi run spine -- --with-cover          # also the spine joined to the cover, to check against
 pixi run spine -- --binding hardcover   # one binding only
-pixi run spine -- --spine-width 8       # a thickness you measured yourself, in mm
+pixi run spine -- --paperback-width 8   # a 平裝 thickness you measured yourself, in mm
 ```
+
+### How wide
 
 The width comes from `main.pdf`'s own page count:
 
@@ -220,27 +223,55 @@ The width comes from `main.pdf`'s own page count:
 | Text block | sheets × 0.10 mm, 80 磅道林紙 at 10 條 | `--paper-thickness MM` |
 | 平裝 | + 1 mm for the cover and the glue | `--binding-allowance MM` |
 | 精裝 | 平裝 + 4 mm of board | |
-| Rounding | up to the next whole millimetre | `--spine-width MM` overrides the lot |
+| Rounding | up to the next whole millimetre | `--paperback-width MM` overrides the lot |
 
 The 4 mm between the two bindings is the gap between NTU's own 8 mm 平裝 and
-12 mm 精裝 samples. Once you have a bound copy in hand, measure it and pass
-`--spine-width`; a real book beats a sum.
+12 mm 精裝 samples. Once you have a bound copy in hand, measure the **平裝**
+one and pass `--paperback-width`; the hardcover always adds its boards to that,
+so measure the paperback even when only the hardcover is being written.
+
+### How it is set
 
 The layout follows NTU's official spine form to the row: 國立臺灣大學 and the
 institute side by side at the head in 真正直書 (true vertical setting), then
 碩士論文 or 博士論文 at 12 pt, the title and 「作者　撰」 at 14 pt, and the ROC
-year over the month at the foot. Everything but the year is set vertically.
-A long institute name, a long title or a narrow spine makes a block set
-smaller rather than run off the artwork, and the run reports every size it
-had to shrink.
+year over the month at the foot. Everything but the year is set vertically,
+with the vertical forms of brackets and punctuation and any Latin turned a
+quarter turn, the way a vertical line sets it.
 
-Both files carry a subset of the very face `main.pdf` sets Chinese in —
-whichever `fontset` and `cjkfont` in `main.tex` selected — so the spine
-matches the cover and a print shop needs nothing installed. The PDF is drawn
-rather than converted, so the ODT and the PDF agree without an office suite
-in the toolchain: opening the ODT in LibreOffice puts every character within
-0.11 mm of where the PDF has it. Like `cover` and `protect`, this never runs
-as part of `pixi run build`.
+The rows are then stretched so the spine's first character starts level with
+the cover's first line and its last finishes level with the cover's last,
+which is what makes the two faces of the bound book agree. Only the spacing
+stretches: the point sizes stay the form's, because those are what the format
+rules name. `--no-cover-alignment` keeps the form's own row positions instead.
+
+A long institute name, a long title or a narrow spine makes a block set
+smaller rather than run off the artwork, and the run reports every size it had
+to shrink. The year and month come off the cover itself, so a spine written
+weeks after the build still carries the thesis's date rather than today's.
+
+### Fonts, and which file to print
+
+Both files carry a subset of the very face `main.pdf` sets Chinese in --
+whichever `fontset` and `cjkfont` in `main.tex` selected, found among the
+shipped fonts or among the ones installed on this machine, by the PostScript
+name the PDF records (標楷體 comes through as `DFKaiShu-SB-Estd-BF`). A face
+that forbids embedding is refused; one marked print-only has its subset
+written installable, or an office suite would silently letter the spine in
+whatever it fell back to.
+
+The PDF is drawn rather than converted, so the ODT and the PDF agree without
+an office suite in the toolchain: with the 全字庫 faces the template ships,
+opening the ODT in LibreOffice puts every character within 0.11 mm of where
+the PDF has it. Other faces are laid out identically and print identically
+from the PDF, but LibreOffice sets some of them -- 標楷體 among them -- about
+one ascent higher on the page, and the run says so. **Print the PDF**; the ODT
+is there to be edited.
+
+`pixi run spine -- --with-cover` also writes `<name>-with-cover.pdf`: the
+spine joined to the cover on one sheet, 8 mm + 210 mm making a 218 mm page, so
+that reading across the join shows at a glance whether the two line up. Like
+`cover` and `protect`, none of this runs as part of `pixi run build`.
 
 ## Submission
 

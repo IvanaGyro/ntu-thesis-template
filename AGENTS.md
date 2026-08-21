@@ -167,7 +167,28 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   proprietary 標楷體 may not.
 - `scripts/make_spine.py` imports `generate_tdr_upload_script.py`'s LaTeX
   parser rather than repeating it, so the spine and the TDR submission cannot
-  disagree about the title, the author, or the date.
+  disagree about the title, the author, or the date. Values are run through
+  `collapse_spaces` for the same reason TeX collapses them: a title wrapped
+  across lines in `ntusetup.tex` must not reach the spine with a newline in it.
+- The spine's rows are stretched so its text spans the same extent as the
+  cover's, measured off page one of `main.pdf`. Only the gaps and the depth
+  the heading justifies across take the stretch; the point sizes stay the
+  form's. Because the table then ends where the cover's last line does, it
+  always fits the sheet — a uniform scale of the rows does not, and pushes the
+  date onto a second page.
+- The year and month are read from the cover's 「中華民國 NNN 年 M 月」 rather
+  than from the clock, because `ntusetup.tex` ships with `date` commented out
+  and the spine is written long after the build.
+- A vertical line is not horizontal text turned on its side: wide characters
+  stay upright, Latin runs turn a quarter turn and advance at their own width,
+  and brackets and punctuation take the shapes the font's `vert` feature
+  gives. LibreOffice applies `vert` itself, so the ODT keeps the subset whole;
+  the PDF carries a second copy with those substitutions folded into its cmap,
+  which is why `layout_features = ["*"]` has to survive subsetting.
+- 標楷體 sets `post.isFixedPitch`, though its ideographs are a full em and its
+  digits half of one. MuPDF believes it and writes `/W [0 65535 260]`, piling
+  the year's digits on top of each other; `drawn_face` clears the flag on the
+  PDF's copy.
 - NTU's format rules (fonts, 12 pt, margins 3/2/3/3, spacing, cover sizes) are
   quoted with their source in `README.md`. Verify against
   <https://www.lib.ntu.edu.tw/doc/cl/THESISSAMPLE.doc> before changing layout.

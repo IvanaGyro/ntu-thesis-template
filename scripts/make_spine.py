@@ -36,6 +36,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 import zipfile
 from dataclasses import dataclass
 from datetime import date
@@ -159,6 +160,10 @@ DATE_LINE_PITCH = 15.0 / 14.0
 # 「撰」 follows the author's name after an ideographic space, as on the form.
 AUTHOR_SUFFIX = "　撰"
 
+# 民國紀年：西元年減 1911。
+# The ROC calendar counts from 1912, so its year is the Gregorian one less this.
+ROC_EPOCH = 1911
+
 # How close to the edge of the spine a character may set. The official 8 mm
 # sample leaves about 0.3 mm beside its widest line, the year; a quarter of a
 # millimetre is a shade tighter than that, so a spine as wide as the sample
@@ -177,6 +182,7 @@ SIDE_CLEARANCE_MM = 0.25
 sys.path.insert(0, str(PROJECT_ROOT))
 from generate_tdr_upload_script import (  # noqa: E402
     CollectionError,
+    collapse_spaces,
     parse_ntusetup,
     strip_comments,
 )
@@ -186,14 +192,25 @@ DEGREE_NAMES = {"master": "碩士論文", "doctor": "博士論文"}
 
 
 def parse_degree(path: Path) -> str:
-    """Read the ntuthesis `degree` option, which names the kind of thesis."""
+    """Read the ntuthesis `degree` option, which names the kind of thesis.
+
+    `degree = {doctor}` is as valid as `degree = doctor`, so both spellings
+    have to be read. Only a genuinely absent option falls back to the class
+    default; a value that is present but unrecognised stops the run rather
+    than lettering a doctoral spine 碩士論文.
+    """
     text = strip_comments(path.read_text(encoding="utf-8"))
     options = re.search(r"\\documentclass\s*\[(.*?)\]\s*\{ntuthesis\}", text, re.DOTALL)
     if not options:
         raise CollectionError(f"Could not find ntuthesis options in {path}")
-    degree = re.search(r"\bdegree\s*=\s*(master|doctor)\b", options.group(1))
-    # The class defaults to master when the option is left out entirely.
-    return DEGREE_NAMES[degree.group(1) if degree else "master"]
+    degree = re.search(r"\bdegree\s*=\s*\{?\s*([A-Za-z]+)\s*\}?", options.group(1))
+    if degree is None:
+        return DEGREE_NAMES["master"]
+    if degree.group(1) not in DEGREE_NAMES:
+        raise CollectionError(
+            f"{path.name} sets degree = {degree.group(1)}; expected master or doctor."
+        )
+    return DEGREE_NAMES[degree.group(1)]
 
 
 @dataclass(frozen=True)
@@ -232,53 +249,119 @@ class SpineText:
         joined = "".join("".join(self.block(name)) for name in NOMINAL_SIZE_PT)
         return "".join(sorted(set(joined)))
 
+    def vertical_characters(self) -> str:
+        """Everything set down a column; the date alone runs across."""
+        joined = "".join(
+            "".join(self.block(name)) for name in NOMINAL_SIZE_PT if name != "date"
+        )
+        return "".join(sorted(set(joined)))
 
-def read_thesis_text(root: Path) -> SpineText:
-    setup = parse_ntusetup(root / "ntusetup.tex")
+
+def read_thesis_text(root: Path, cover_date: tuple[int, int] | None) -> SpineText:
+    """Collect what the spine letters, in the words the cover already uses.
+
+    TeX collapses a run of spaces and newlines into one space, so a value
+    wrapped across lines inside its braces reaches the class as a single line.
+    Collapsing it here too keeps a newline out of the spine, where it would be
+    counted as a character and looked up in the font as a glyph.
+    """
+    setup = {key: collapse_spaces(value) for key, value in parse_ntusetup(root / "ntusetup.tex").items()}
     missing = [key for key in ("university", "institute", "title", "author") if not setup.get(key)]
     if missing:
         raise CollectionError(
             f"ntusetup.tex has no {', '.join(missing)}; the spine cannot be lettered without it."
         )
-    # The class defaults `date` to the day of the build, exactly as the cover does.
-    try:
-        written = date.fromisoformat(setup["date"]) if setup.get("date") else date.today()
-    except ValueError as error:
-        raise CollectionError(
-            f"ntusetup.tex has date = {{{setup['date']}}}, which is not a YYYY-MM-DD date."
-        ) from error
+    if cover_date is not None:
+        # The cover is what gets bound; the spine has to agree with it, and
+        # `date` is commented out in the template, so a later run of this
+        # script would otherwise date the spine to the day it was run.
+        roc_year, month = cover_date
+    elif setup.get("date"):
+        try:
+            written = date.fromisoformat(setup["date"])
+        except ValueError as error:
+            raise CollectionError(
+                f"ntusetup.tex has date = {{{setup['date']}}}, which is not a YYYY-MM-DD date."
+            ) from error
+        roc_year, month = written.year - ROC_EPOCH, written.month
+    else:
+        today = date.today()
+        roc_year, month = today.year - ROC_EPOCH, today.month
     return SpineText(
         university=setup["university"],
         institute=setup["institute"],
         degree=parse_degree(root / "main.tex"),
         title=setup["title"],
         author=setup["author"],
-        roc_year=written.year - 1911,
-        month=written.month,
+        roc_year=roc_year,
+        month=month,
     )
 
 
 # --------------------------------------------------------------------------
-# The thesis's own Chinese face
+# Reading the cover
 # --------------------------------------------------------------------------
+#
+# Page one of the built PDF is the cover, and it is the page the spine has to
+# agree with: it prints the same words, in the same face, on the board the
+# spine folds away from.
+
+# 封面日期行：中華民國 115 年 8 月。
+COVER_DATE = re.compile(r"中華民國\s*(\d+)\s*年\s*(\d+)\s*月")
+
+# Anything at or above this code point is CJK rather than Latin, which is
+# enough to tell the cover's two faces apart.
+CJK_FIRST = 0x2E80
 
 
-def cover_cjk_font_name(document: pymupdf.Document) -> str:
-    """Name the font the built PDF sets Chinese in, as used on the cover.
+@dataclass(frozen=True)
+class Cover:
+    """What the built thesis's cover tells the spine."""
 
-    Page one is the cover, and the cover is the one page guaranteed to carry
-    the university, institute, title and author in the thesis's Chinese face
-    -- the very words the spine repeats.
+    font: str
+    width_pt: float
+    height_pt: float
+    top_pt: float
+    bottom_pt: float
+    date: tuple[int, int] | None
+
+    @property
+    def text_height_pt(self) -> float:
+        return self.bottom_pt - self.top_pt
+
+
+def read_cover(document: pymupdf.Document) -> Cover:
+    """Measure the cover: its Chinese face, its date, and where its text sits.
+
+    The extremes are the top of the first line and the bottom of the last, in
+    line boxes rather than ink, so that they mean the same thing on a line of
+    CJK as on a line of Latin.
     """
     page = document[0]
+    font, top, bottom = "", None, None
     for block in page.get_text("rawdict")["blocks"]:
         for line in block.get("lines", []):
             for span in line["spans"]:
-                if any(ord(char["c"]) > 0x2E80 for char in span["chars"]):
-                    return re.sub(r"^[A-Z]{6}\+", "", span["font"])
-    raise CollectionError(
-        "Page 1 of the built PDF prints no Chinese, so its Chinese font cannot "
-        "be identified. Build the cover before writing the spine."
+                for char in span["chars"]:
+                    if char["c"].isspace():
+                        continue
+                    top = char["bbox"][1] if top is None else min(top, char["bbox"][1])
+                    bottom = char["bbox"][3] if bottom is None else max(bottom, char["bbox"][3])
+                    if not font and ord(char["c"]) >= CJK_FIRST:
+                        font = re.sub(r"^[A-Z]{6}\+", "", span["font"])
+    if not font:
+        raise CollectionError(
+            "Page 1 of the built PDF prints no Chinese, so its Chinese font cannot "
+            "be identified. Build the cover before writing the spine."
+        )
+    printed = COVER_DATE.search(page.get_text())
+    return Cover(
+        font=font,
+        width_pt=page.rect.width,
+        height_pt=page.rect.height,
+        top_pt=top,
+        bottom_pt=bottom,
+        date=(int(printed.group(1)), int(printed.group(2))) if printed else None,
     )
 
 
@@ -305,33 +388,56 @@ def same_font(name: str, candidate: str) -> bool:
     return reduced(name) == reduced(candidate)
 
 
+def installed_fonts() -> list[tuple[Path, tuple[str, ...]]]:
+    """Every font fontconfig knows about, with the names it answers to."""
+    listed = subprocess.run(
+        ["fc-list", "--format=%{file}\t%{postscriptname}\t%{family}\t%{fullname}\n"],
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        return []
+    found = []
+    for row in listed.stdout.splitlines():
+        path, _, names = row.partition("\t")
+        if path:
+            found.append((Path(path), tuple(names.replace("\t", ",").split(","))))
+    return found
+
+
 def locate_font(name: str, root: Path) -> Path:
     """Find the file behind a PDF font name: shipped with the template, or installed.
 
-    fontconfig answers a request for a face it does not have with a
-    metric-compatible stand-in, so an fc-match hit is only accepted once the
-    file it points at says it really is the font that was asked for.
+    The built PDF names the face it used, and that name is a PostScript one --
+    標楷體 comes through as DFKaiShu-SB-Estd-BF -- so the search has to match
+    on more than the family. fontconfig is asked for what it has rather than
+    asked to match: it answers a request for a face it does not have with a
+    metric-compatible stand-in, so every candidate is opened and made to say
+    for itself that it is the font the thesis was built with.
     """
     for path in sorted(root.glob("fonts/**/*")):
         if path.suffix.lower() in (".ttf", ".otf", ".ttc") and any(
             same_font(name, candidate) for candidate in font_names(path)
         ):
             return path
-    matched = subprocess.run(
-        ["fc-match", "--format=%{file}", name],
-        capture_output=True,
-        text=True,
-    )
-    candidate = Path(matched.stdout.strip()) if matched.returncode == 0 else None
-    if candidate and candidate.is_file() and any(
-        same_font(name, found) for found in font_names(candidate)
-    ):
-        return candidate
+    for path, names in installed_fonts():
+        if any(same_font(name, candidate) for candidate in names) and any(
+            same_font(name, candidate) for candidate in font_names(path)
+        ):
+            return path
     raise CollectionError(
         f"The built PDF sets Chinese in {name}, but no file for it was found in "
-        f"{root / 'fonts'} or on this system. Install it, or build with a "
-        "fontset whose Chinese face ships with the template."
+        f"{root / 'fonts'} or among the fonts installed on this system. Install "
+        "it, or build with a fontset whose Chinese face ships with the template."
     )
+
+
+# The faces this template ships, and the ones the two outputs have been
+# checked against: with either of them LibreOffice sets the ODT within a tenth
+# of a millimetre of where the PDF draws it. Other faces are laid out the same
+# way and print the same from the PDF, but LibreOffice sets some of them --
+# 標楷體 among them -- about one ascent higher on the page.
+VERIFIED_FACES = ("TW-Kai-98_1", "TW-Sung-98_1")
 
 
 # OS/2 fsType, the font's own statement of what may be embedded where.
@@ -357,6 +463,9 @@ def embeddable_font(path: Path, characters: str) -> bytes:
         )
 
     options = subset.Options()
+    # `vert` has to survive: LibreOffice reads it out of the ODT's copy, and
+    # the PDF folds it into its own.
+    options.layout_features = ["*"]
     options.name_IDs = ["*"]
     options.name_legacy = True
     options.name_languages = ["*"]
@@ -387,6 +496,65 @@ def embeddable_font(path: Path, characters: str) -> bytes:
     written = io.BytesIO()
     font.save(written)
     font.close()
+    return written.getvalue()
+
+
+def vertical_substitutions(font: TTFont) -> dict[str, str]:
+    """Each glyph that has a vertical form, mapped to it, per the font's `vert`.
+
+    Vertical CJK does not merely turn the page: a bracket, a comma or a full
+    stop is drawn differently down a column than across a line, and the shape
+    to use lives in the font rather than at a code point of its own.
+    """
+    gsub = font.get("GSUB")
+    if gsub is None:
+        return {}
+    lookups: set[int] = set()
+    for record in gsub.table.FeatureList.FeatureRecord:
+        if record.FeatureTag in ("vert", "vrt2"):
+            lookups.update(record.Feature.LookupListIndex)
+    mapping: dict[str, str] = {}
+    for index in sorted(lookups):
+        for table in gsub.table.LookupList.Lookup[index].SubTable:
+            # A type 7 lookup only wraps the real one.
+            table = getattr(table, "ExtSubTable", table)
+            mapping.update(getattr(table, "mapping", {}))
+    return mapping
+
+
+def drawn_face(font_bytes: bytes, vertical: str) -> bytes:
+    """The copy of the face the PDF draws from, with two corrections.
+
+    The first is the vertical forms. LibreOffice applies `vert` itself when it
+    sets the ODT, but a PDF carries glyphs already chosen, so folding the
+    substitution into this copy's character map is what makes the drawn page
+    agree with the editable one. The mapping back to Unicode is untouched, so
+    the PDF still reads as what it says.
+
+    The second is `post.isFixedPitch`. 標楷體 sets it, though its ideographs
+    are a full em wide and its digits half of one, and a PDF writer that
+    believes it emits a single width for every glyph -- which sets the year on
+    the spine as three digits piled on top of each other. Clearing the flag
+    costs a font that really is monospaced nothing: its widths are then simply
+    written out, and they all still agree.
+    """
+    face = TTFont(io.BytesIO(font_bytes))
+    mapping = vertical_substitutions(face)
+    wanted = {ord(character) for character in vertical}
+    turned = 0
+    for table in face["cmap"].tables:
+        for code, name in list(table.cmap.items()):
+            if code in wanted and name in mapping:
+                table.cmap[code] = mapping[name]
+                turned += 1
+    if turned:
+        logging.info("Set %d character(s) in their vertical form.", turned)
+    if face["post"].isFixedPitch:
+        logging.info("%s claims to be monospaced; writing its real widths.", face["name"].getDebugName(1))
+        face["post"].isFixedPitch = 0
+    written = io.BytesIO()
+    face.save(written)
+    face.close()
     return written.getvalue()
 
 
@@ -456,6 +624,65 @@ def measure(
 # --------------------------------------------------------------------------
 # Placing the text
 # --------------------------------------------------------------------------
+#
+# Vertical CJK setting is not simply horizontal text turned on its side. Every
+# wide character keeps its upright shape and takes a slot one em deep, while a
+# run of Latin -- letters, digits, anything narrow -- turns a quarter turn and
+# runs down the column at its own width. Punctuation gets a different shape
+# again, which the font's own `vert` feature supplies.
+
+
+def upright(character: str) -> bool:
+    """Whether a character stands up in a vertical line or turns on its side.
+
+    East Asian width is exactly this distinction: the wide, full-width and
+    ambiguous classes are the ones a CJK line sets upright.
+    """
+    return unicodedata.east_asian_width(character) in ("W", "F", "A")
+
+
+@dataclass(frozen=True)
+class Run:
+    """A stretch of one line that shares an orientation."""
+
+    text: str
+    turned: bool
+    advance: float  # in em, so that a point size scales it
+
+
+def split_runs(line: str, ruler: pymupdf.Font) -> tuple[Run, ...]:
+    """Break a line into upright characters and turned Latin runs.
+
+    Each upright character is its own run so that justification can open the
+    gaps between them, the way a vertical CJK line stretches.
+    """
+    runs: list[Run] = []
+    for character in line:
+        if upright(character):
+            runs.append(Run(character, False, 1.0))
+            continue
+        if runs and runs[-1].turned:
+            grown = runs[-1].text + character
+            runs[-1] = Run(grown, True, ruler.text_length(grown, fontsize=1.0))
+        else:
+            runs.append(Run(character, True, ruler.text_length(character, fontsize=1.0)))
+    return tuple(runs)
+
+
+@dataclass(frozen=True)
+class Line:
+    """One column of a block, already broken into runs."""
+
+    runs: tuple[Run, ...]
+
+    @property
+    def text(self) -> str:
+        return "".join(run.text for run in self.runs)
+
+    @property
+    def advance(self) -> float:
+        """How deep the line sets, in em."""
+        return sum(run.advance for run in self.runs)
 
 
 @dataclass(frozen=True)
@@ -465,7 +692,7 @@ class Block:
     name: str
     top_pt: float
     height_pt: float
-    lines: tuple[str, ...]
+    lines: tuple[Line, ...]
     size_pt: float
     pitch_pt: float
     ascent: float
@@ -476,26 +703,32 @@ class Block:
     def shrunk(self) -> bool:
         return self.size_pt < NOMINAL_SIZE_PT[self.name] - 1e-6
 
-    def baselines(self, index: int) -> list[float]:
-        """Baseline of every character of line `index`, top of the page down.
+    @property
+    def texts(self) -> tuple[str, ...]:
+        return tuple(line.text for line in self.lines)
 
-        A vertical CJK line hands each character a slot one em deep and hangs
-        it from the top of that slot, so the first baseline sits one ascent
-        below where the line begins and the block's ink ends up filling its
-        row. Both outputs work from these numbers, so the ODT and the PDF
-        letter the spine identically.
+    def placed(self, index: int) -> list[tuple[Run, float]]:
+        """Every run of line `index` with the page offset of its slot's top.
+
+        A vertical line hands each run a slot as deep as its advance and hangs
+        the run from the top of it; justification widens the gaps between the
+        slots without changing what any of them holds.
         """
         if not self.vertical:
             return []
-        count = len(self.lines[index])
-        if self.justified:
-            step = (self.height_pt - self.size_pt) / (count - 1) if count > 1 else 0.0
-            start = self.top_pt if count > 1 else self.top_pt + (self.height_pt - self.size_pt) / 2
+        line = self.lines[index]
+        deep = line.advance * self.size_pt
+        if self.justified and len(line.runs) > 1:
+            gap = (self.height_pt - deep) / (len(line.runs) - 1)
+            start = self.top_pt
         else:
-            step = self.size_pt
-            start = self.top_pt + (self.height_pt - count * self.size_pt) / 2
-        start += self.ascent * self.size_pt
-        return [start + step * position for position in range(count)]
+            gap = 0.0
+            start = self.top_pt + (self.height_pt - deep) / 2
+        placement, offset = [], start
+        for run in line.runs:
+            placement.append((run, offset))
+            offset += run.advance * self.size_pt + gap
+        return placement
 
     def centre_pt(self, index: int, width_pt: float) -> float:
         """Where line `index` sits across the spine.
@@ -505,6 +738,28 @@ class Block:
         """
         offset = (len(self.lines) - 1) / 2 - index
         return width_pt / 2 + offset * self.pitch_pt
+
+    @property
+    def ink_top_pt(self) -> float:
+        """The top of the block's first line box, leading excluded.
+
+        Measured the same way the cover is, so that aligning one against the
+        other compares like with like.
+        """
+        if not self.vertical:
+            leading = self.pitch_pt - self.size_pt
+            return self.top_pt + (self.height_pt - len(self.lines) * self.pitch_pt + leading) / 2
+        return min(self.placed(index)[0][1] for index in range(len(self.lines)))
+
+    @property
+    def ink_bottom_pt(self) -> float:
+        if not self.vertical:
+            return self.ink_top_pt + (len(self.lines) - 1) * self.pitch_pt + self.size_pt
+        ends = []
+        for index in range(len(self.lines)):
+            run, offset = self.placed(index)[-1]
+            ends.append(offset + run.advance * self.size_pt)
+        return max(ends)
 
 
 def capped(name: str, *limits: float) -> float:
@@ -525,10 +780,9 @@ def capped(name: str, *limits: float) -> float:
 
 def fit_size(
     name: str,
-    lines: tuple[str, ...],
+    lines: tuple[Line, ...],
     height_pt: float,
     width_pt: float,
-    ruler: pymupdf.Font,
 ) -> tuple[float, float]:
     """Return the point size and line pitch that keep a block inside its row.
 
@@ -537,40 +791,144 @@ def fit_size(
     setting smaller rather than by running over the edge of the artwork.
     """
     across = width_pt - 2 * mm(SIDE_CLEARANCE_MM)
+    deepest = max(line.advance for line in lines)
     if name == "date":
-        widest = max(ruler.text_length(line, fontsize=1.0) for line in lines)
-        size = capped(name, across / widest, height_pt / (len(lines) * DATE_LINE_PITCH))
+        # The date is the one horizontal block: it runs across the spine, and
+        # its lines stack down the row rather than beside each other.
+        size = capped(name, across / deepest, height_pt / (len(lines) * DATE_LINE_PITCH))
         return size, size * DATE_LINE_PITCH
     pitch_factor = HEADING_COLUMN_PITCH if name == "heading" else 1.0
-    longest = max(len(line) for line in lines)
-    # One em per character down the column, one pitch per column across it.
-    size = capped(name, height_pt / longest, across / (pitch_factor * len(lines)))
+    size = capped(name, height_pt / deepest, across / (pitch_factor * len(lines)))
     return size, size * pitch_factor
 
 
-def lay_out(text: SpineText, width_pt: float, ruler: pymupdf.Font) -> tuple[Block, ...]:
-    blocks: list[Block] = []
+@dataclass(frozen=True)
+class Spine:
+    """The whole page: every row in order, and the blocks among them."""
+
+    width_pt: float
+    rows: tuple[tuple[float, Block | None], ...]
+
+    @property
+    def blocks(self) -> tuple[Block, ...]:
+        return tuple(block for _, block in self.rows if block is not None)
+
+    @property
+    def ink_top_pt(self) -> float:
+        return min(block.ink_top_pt for block in self.blocks)
+
+    @property
+    def ink_bottom_pt(self) -> float:
+        return max(block.ink_bottom_pt for block in self.blocks)
+
+
+def form_heights() -> list[float]:
+    """The row heights of NTU's form, as drawn."""
+    return [inch(height_in) for _, height_in in LAYOUT]
+
+
+def build_rows(
+    text: SpineText, width_pt: float, ruler: pymupdf.Font, heights: list[float]
+) -> Spine:
+    """Fill the rows, each block sized to whatever room its own row leaves."""
+    rows: list[tuple[float, Block | None]] = []
     top = 0.0
-    for name, height_in in LAYOUT:
-        height = inch(height_in)
+    for (name, _), height in zip(LAYOUT, heights):
+        block = None
         if name:
-            lines = text.block(name)
-            size, pitch = fit_size(name, lines, height, width_pt, ruler)
-            blocks.append(
-                Block(
-                    name=name,
-                    top_pt=top,
-                    height_pt=height,
-                    lines=lines,
-                    size_pt=size,
-                    pitch_pt=pitch,
-                    ascent=ruler.ascender,
-                    vertical=name != "date",
-                    justified=name == "heading",
-                )
+            lines = tuple(Line(split_runs(line, ruler)) for line in text.block(name))
+            size, pitch = fit_size(name, lines, height, width_pt)
+            block = Block(
+                name=name,
+                top_pt=top,
+                height_pt=height,
+                lines=lines,
+                size_pt=size,
+                pitch_pt=pitch,
+                ascent=ruler.ascender,
+                vertical=name != "date",
+                justified=name == "heading",
             )
+        rows.append((height, block))
         top += height
-    return tuple(blocks)
+    return Spine(width_pt=width_pt, rows=tuple(rows))
+
+
+def block_room(block: Block) -> tuple[float, float]:
+    """A block's own row height, and how far its ink starts below that row's top.
+
+    A vertical block fills its row exactly, so its row is as deep as its ink.
+    The date stacks line boxes instead, and half a line's leading sits above
+    the first of them.
+    """
+    if block.vertical:
+        return max(line.advance for line in block.lines) * block.size_pt, 0.0
+    return len(block.lines) * block.pitch_pt, (block.pitch_pt - block.size_pt) / 2
+
+
+def lay_out(
+    text: SpineText,
+    width_pt: float,
+    ruler: pymupdf.Font,
+    cover: Cover | None,
+) -> Spine:
+    """Lay the spine out, optionally stretched to the cover's own text extent.
+
+    NTU's form is drawn for a generic cover. On a bound book the spine reads
+    better when its first character starts level with the cover's first line
+    and its last finishes level with the cover's last, so that the two faces
+    of the book agree.
+
+    What gives is the space, not the type. The degree, the title, the author
+    and the date keep the point sizes the format rules name, so their depth is
+    already settled; the gaps between them, and the depth the heading
+    justifies across, take up the difference in one proportion. The two ends
+    then land on the cover's by construction, and the table finishes where the
+    cover's last line does, so it always fits the sheet.
+    """
+    form = build_rows(text, width_pt, ruler, form_heights())
+    if cover is None:
+        return form
+    blocks = form.blocks
+    settled = sum(block.ink_bottom_pt - block.ink_top_pt for block in blocks[1:])
+    elastic = blocks[0].height_pt + sum(
+        after.ink_top_pt - before.ink_bottom_pt for before, after in zip(blocks, blocks[1:])
+    )
+    if cover.text_height_pt <= settled or elastic <= 0:
+        raise CollectionError(
+            "The cover's text is shorter than the spine's own lines, so the two "
+            "cannot be aligned. Pass --no-cover-alignment to keep the form's rows."
+        )
+    stretch = (cover.text_height_pt - settled) / elastic
+
+    heights = form_heights()
+    lettered = [index for index, (name, _) in enumerate(LAYOUT) if name]
+    ink_top, filled, previous = cover.top_pt, 0.0, -1
+    for order, index in enumerate(lettered):
+        block = blocks[order]
+        if order:
+            ink_top += (block.ink_top_pt - blocks[order - 1].ink_bottom_pt) * stretch
+        room, inset = block_room(block)
+        if order == 0:
+            room = block.height_pt * stretch
+        # Whatever lies between the last row and this one is blank, and the
+        # form's own proportions decide how it is shared out.
+        blank = ink_top - inset - filled
+        shares = [inch(LAYOUT[row][1]) for row in range(previous + 1, index)]
+        for row, share in zip(range(previous + 1, index), shares):
+            heights[row] = blank * share / sum(shares)
+        heights[index] = room
+        filled = ink_top - inset + room
+        ink_top += block.ink_bottom_pt - block.ink_top_pt if order else room
+        previous = index
+
+    heights[-1] = PAGE_HEIGHT_PT - sum(heights[:-1])
+    if heights[-1] < 0:
+        raise CollectionError(
+            "Aligning to the cover would run the spine past the foot of the page. "
+            "Pass --no-cover-alignment to keep the form's own rows."
+        )
+    return build_rows(text, width_pt, ruler, heights)
 
 
 # --------------------------------------------------------------------------
@@ -579,53 +937,91 @@ def lay_out(text: SpineText, width_pt: float, ruler: pymupdf.Font) -> tuple[Bloc
 
 
 def write_pdf(
-    blocks: tuple[Block, ...],
-    width_pt: float,
+    spine: Spine,
     font: pymupdf.Font,
     metadata: dict[str, str],
     target: Path,
 ) -> None:
-    """Draw the spine directly, one character at a time.
+    """Draw the spine directly, run by run.
 
     Converting the ODT would mean an office suite in the toolchain; the
-    placement is already computed, so the characters are simply set where the
-    layout puts them.
+    placement is already computed, so the text is simply set where the layout
+    puts it. Upright characters are centred in their column; a turned run is
+    drawn horizontally and rotated a quarter turn clockwise about its own
+    start, which is how a vertical line sets Latin.
     """
     with pymupdf.open() as document:
-        page = document.new_page(width=width_pt, height=PAGE_HEIGHT_PT)
-        writer = pymupdf.TextWriter(page.rect)
-        for block in blocks:
-            if block.vertical:
-                for index, line in enumerate(block.lines):
-                    centre = block.centre_pt(index, width_pt)
-                    for character, baseline in zip(line, block.baselines(index)):
+        page = document.new_page(width=spine.width_pt, height=PAGE_HEIGHT_PT)
+        upright_text = pymupdf.TextWriter(page.rect)
+        turned: list[tuple[pymupdf.TextWriter, pymupdf.Point]] = []
+        for block in spine.blocks:
+            if not block.vertical:
+                draw_across(block, spine.width_pt, font, upright_text)
+                continue
+            for index in range(len(block.lines)):
+                centre = block.centre_pt(index, spine.width_pt)
+                for run, offset in block.placed(index):
+                    if run.turned:
+                        turned.append(draw_turned(run, offset, centre, block, font, page))
+                        continue
+                    for position, character in enumerate(run.text):
                         advance = font.glyph_advance(ord(character)) * block.size_pt
-                        writer.append(
-                            pymupdf.Point(centre - advance / 2, baseline),
+                        upright_text.append(
+                            pymupdf.Point(
+                                centre - advance / 2,
+                                offset + position * block.size_pt + block.ascent * block.size_pt,
+                            ),
                             character,
                             font=font,
                             fontsize=block.size_pt,
                         )
-                continue
-            # Half leading above and below, the way a line box is built.
-            leading = block.pitch_pt - block.size_pt * (font.ascender - font.descender)
-            top = block.top_pt + (block.height_pt - len(block.lines) * block.pitch_pt) / 2
-            for index, line in enumerate(block.lines):
-                baseline = (
-                    top + index * block.pitch_pt + leading / 2 + font.ascender * block.size_pt
-                )
-                length = font.text_length(line, fontsize=block.size_pt)
-                writer.append(
-                    pymupdf.Point((width_pt - length) / 2, baseline),
-                    line,
-                    font=font,
-                    fontsize=block.size_pt,
-                )
-        writer.write_text(page)
+        upright_text.write_text(page)
+        for writer, pivot in turned:
+            writer.write_text(page, morph=(pivot, pymupdf.Matrix(-90)))
         document.set_metadata(metadata)
         document.subset_fonts()
         document.save(target, garbage=4, deflate=True)
     logging.info("Wrote %s", target)
+
+
+def draw_across(
+    block: Block, width_pt: float, font: pymupdf.Font, writer: pymupdf.TextWriter
+) -> None:
+    """Set the one horizontal block, its lines centred across the spine."""
+    # Half the leading above the line and half below, the way a line box is built.
+    leading = block.pitch_pt - block.size_pt * (font.ascender - font.descender)
+    top = block.top_pt + (block.height_pt - len(block.lines) * block.pitch_pt) / 2
+    for index, line in enumerate(block.lines):
+        baseline = top + index * block.pitch_pt + leading / 2 + font.ascender * block.size_pt
+        length = font.text_length(line.text, fontsize=block.size_pt)
+        writer.append(
+            pymupdf.Point((width_pt - length) / 2, baseline),
+            line.text,
+            font=font,
+            fontsize=block.size_pt,
+        )
+
+
+def draw_turned(
+    run: Run,
+    offset: float,
+    centre: float,
+    block: Block,
+    font: pymupdf.Font,
+    page: pymupdf.Page,
+) -> tuple[pymupdf.TextWriter, pymupdf.Point]:
+    """Queue one Latin run, laid out horizontally for a quarter turn clockwise.
+
+    Rotating about the pivot carries the run down its column, so it is written
+    left to right from there and the rotation does the rest. A quarter turn
+    clockwise puts what was above the baseline to the right of it, so the
+    baseline sits left of the column's centre line by as much as the face
+    leaves above it, less half an em.
+    """
+    pivot = pymupdf.Point(centre - block.size_pt * (font.ascender - 0.5), offset)
+    writer = pymupdf.TextWriter(page.rect)
+    writer.append(pivot, run.text, font=font, fontsize=block.size_pt)
+    return writer, pivot
 
 
 # --------------------------------------------------------------------------
@@ -649,6 +1045,15 @@ ODF_NAMESPACES = " ".join(
 
 def pt(value: float) -> str:
     return f"{value:.4f}pt"
+
+
+def millimetres(value_pt: float) -> str:
+    """Widths in the unit a bindery quotes, so no rounding creeps in.
+
+    A spine given in whole millimetres survives as one; expressed in points it
+    comes back a hundredth of a millimetre short.
+    """
+    return f"{value_pt * MM_PER_IN / PT_PER_IN:.4f}mm"
 
 
 def font_declaration(family: str, embedded: str) -> str:
@@ -688,15 +1093,16 @@ def text_properties(family: str, size_pt: float) -> str:
     )
 
 
-def automatic_styles(blocks: tuple[Block, ...], width_pt: float, family: str) -> str:
+def automatic_styles(spine: Spine, family: str) -> str:
     """Every style content.xml needs: the table, its rows and cells, the text."""
+    width_pt = spine.width_pt
     pieces = [
         '<style:style style:name="Spine" style:family="table">'
-        f'<style:table-properties style:width={quoteattr(pt(width_pt))} '
+        f'<style:table-properties style:width={quoteattr(millimetres(width_pt))} '
         'table:align="center" fo:margin-top="0pt" fo:margin-bottom="0pt" '
         'style:writing-mode="page"/></style:style>',
         '<style:style style:name="SpineColumn" style:family="table-column">'
-        f'<style:table-column-properties style:column-width={quoteattr(pt(width_pt))}/>'
+        f'<style:table-column-properties style:column-width={quoteattr(millimetres(width_pt))}/>'
         "</style:style>",
         '<style:style style:name="Plain" style:family="table-cell">'
         '<style:table-cell-properties fo:padding="0pt" fo:border="none"/></style:style>',
@@ -710,13 +1116,13 @@ def automatic_styles(blocks: tuple[Block, ...], width_pt: float, family: str) ->
         '<style:paragraph-properties fo:margin-top="0pt" fo:margin-bottom="0pt"/>'
         "</style:style>",
     ]
-    for index, (_, height_in) in enumerate(LAYOUT):
+    for index, (height_pt, _) in enumerate(spine.rows):
         pieces.append(
             f'<style:style style:name="Row{index}" style:family="table-row">'
-            f"<style:table-row-properties style:row-height={quoteattr(pt(inch(height_in)))} "
+            f"<style:table-row-properties style:row-height={quoteattr(pt(height_pt))} "
             'fo:keep-together="auto"/></style:style>'
         )
-    for block in blocks:
+    for block in spine.blocks:
         alignment = (
             'fo:text-align="justify" fo:text-align-last="justify" '
             'style:justify-single-word="false"'
@@ -738,11 +1144,9 @@ def automatic_styles(blocks: tuple[Block, ...], width_pt: float, family: str) ->
     return f"<office:automatic-styles>{''.join(pieces)}</office:automatic-styles>"
 
 
-def table_rows(blocks: tuple[Block, ...]) -> str:
-    lettered = {block.name: block for block in blocks}
+def table_rows(spine: Spine) -> str:
     rows = []
-    for index, (name, _) in enumerate(LAYOUT):
-        block = lettered.get(name)
+    for index, (_, block) in enumerate(spine.rows):
         if block is None:
             cell = (
                 '<table:table-cell table:style-name="Plain" office:value-type="string">'
@@ -753,7 +1157,7 @@ def table_rows(blocks: tuple[Block, ...]) -> str:
                 f'<text:p text:style-name="P{block.name}">'
                 f'<text:span text:style-name="T{block.name}">{escape(line)}</text:span>'
                 "</text:p>"
-                for line in block.lines
+                for line in block.texts
             )
             style = "Sideways" if block.vertical else "Upright"
             cell = (
@@ -766,16 +1170,16 @@ def table_rows(blocks: tuple[Block, ...]) -> str:
     return "".join(rows)
 
 
-def content_xml(blocks: tuple[Block, ...], width_pt: float, family: str, font_path: str) -> str:
+def content_xml(spine: Spine, family: str, font_path: str) -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<office:document-content {ODF_NAMESPACES} office:version="1.3">'
         f"{font_declaration(family, font_path)}"
-        f"{automatic_styles(blocks, width_pt, family)}"
+        f"{automatic_styles(spine, family)}"
         "<office:body><office:text>"
         '<table:table table:name="Spine" table:style-name="Spine">'
         '<table:table-column table:style-name="SpineColumn"/>'
-        f"{table_rows(blocks)}"
+        f"{table_rows(spine)}"
         "</table:table>"
         "</office:text></office:body></office:document-content>"
     )
@@ -794,7 +1198,7 @@ def styles_xml(width_pt: float, family: str, font_path: str) -> str:
         "</office:styles>"
         "<office:automatic-styles>"
         '<style:page-layout style:name="Spine">'
-        f"<style:page-layout-properties fo:page-width={quoteattr(pt(width_pt))} "
+        f"<style:page-layout-properties fo:page-width={quoteattr(millimetres(width_pt))} "
         f"fo:page-height={quoteattr(pt(PAGE_HEIGHT_PT))} "
         'style:print-orientation="portrait" fo:margin-top="0pt" fo:margin-bottom="0pt" '
         'fo:margin-left="0pt" fo:margin-right="0pt" style:writing-mode="lr-tb" '
@@ -852,8 +1256,7 @@ def manifest_xml(font_path: str) -> str:
 
 
 def write_odt(
-    blocks: tuple[Block, ...],
-    width_pt: float,
+    spine: Spine,
     family: str,
     font_bytes: bytes,
     metadata: dict[str, str],
@@ -869,8 +1272,8 @@ def write_odt(
             compress_type=zipfile.ZIP_STORED,
         )
         archive.writestr("META-INF/manifest.xml", manifest_xml(font_path))
-        archive.writestr("content.xml", content_xml(blocks, width_pt, family, font_path))
-        archive.writestr("styles.xml", styles_xml(width_pt, family, font_path))
+        archive.writestr("content.xml", content_xml(spine, family, font_path))
+        archive.writestr("styles.xml", styles_xml(spine.width_pt, family, font_path))
         archive.writestr("meta.xml", meta_xml(metadata))
         archive.writestr("settings.xml", settings_xml())
         archive.writestr(font_path, font_bytes)
@@ -893,32 +1296,28 @@ def spine_metadata(text: SpineText, binding: Binding, thickness: Thickness) -> d
     }
 
 
-def verify(
-    odt: Path,
-    pdf: Path,
-    blocks: tuple[Block, ...],
-    width_pt: float,
-    family: str,
-) -> None:
+def verify(odt: Path, pdf: Path, spine: Spine, family: str) -> None:
     """Refuse to report success until both files hold what was asked for."""
-    expected = "".join(line for block in blocks for line in block.lines)
+    expected = "".join(line for block in spine.blocks for line in block.texts)
     with pymupdf.open(pdf) as document:
         if document.page_count != 1:
             raise CollectionError(f"{pdf.name} holds {document.page_count} pages, not one.")
         page = document[0]
-        if abs(page.rect.width - width_pt) > 0.01:
+        if abs(page.rect.width - spine.width_pt) > 0.01:
             raise CollectionError(
-                f"{pdf.name} is {page.rect.width:.2f}pt wide, not {width_pt:.2f}pt."
+                f"{pdf.name} is {page.rect.width:.2f}pt wide, not {spine.width_pt:.2f}pt."
             )
         if abs(page.rect.height - PAGE_HEIGHT_PT) > 0.01:
             raise CollectionError(f"{pdf.name} is not as tall as the thesis page.")
-        fonts = page.get_fonts(full=True)
-        # PDF writers name an embedded face by its full name, style included,
-        # so the family has to be found inside that rather than equal to it.
-        embedded = reduced(re.sub(r"^[A-Z]{6}\+", "", fonts[0][3])) if fonts else ""
-        if len(fonts) != 1 or reduced(family) not in embedded:
+        # One face, though a turned run refers to it under a name of its own,
+        # so it is the distinct font objects that have to come to one. A PDF
+        # writer names an embedded face by its full name, style included, so
+        # the family has to be found inside that rather than equal to it.
+        fonts = {font[0]: font[3] for font in page.get_fonts(full=True)}
+        embedded = [reduced(re.sub(r"^[A-Z]{6}\+", "", name)) for name in fonts.values()]
+        if len(fonts) != 1 or reduced(family) not in embedded[0]:
             raise CollectionError(f"{pdf.name} does not set the spine in {family} alone.")
-        if not document.extract_font(fonts[0][0])[3]:
+        if not document.extract_font(next(iter(fonts)))[3]:
             raise CollectionError(f"{pdf.name} does not embed {family}.")
         printed = re.sub(r"\s", "", page.get_text())
         if sorted(printed) != sorted(re.sub(r"\s", "", expected)):
@@ -939,8 +1338,34 @@ def verify(
                 raise CollectionError(f"{odt.name} is missing {character!r}.")
 
 
+def write_proof(spine_pdf: Path, thesis: Path, target: Path) -> None:
+    """Join the spine to the cover, the way the two meet on the bound book.
+
+    An 8 mm spine beside a 210 mm cover makes a 218 mm sheet: the spine on the
+    left, the cover butted against it, nothing between them. Reading across
+    the join is the quickest check that the two agree.
+    """
+    with pymupdf.open(spine_pdf) as spine, pymupdf.open(thesis) as book:
+        cover = book[0]
+        width = spine[0].rect.width + cover.rect.width
+        with pymupdf.open() as proof:
+            page = proof.new_page(width=width, height=cover.rect.height)
+            page.show_pdf_page(
+                pymupdf.Rect(0, 0, spine[0].rect.width, spine[0].rect.height), spine, 0
+            )
+            page.show_pdf_page(
+                pymupdf.Rect(spine[0].rect.width, 0, width, cover.rect.height), book, 0
+            )
+            proof.save(target, garbage=4, deflate=True)
+    logging.info("Wrote %s", target)
+
+
 def describe(
-    binding: Binding, thickness: Thickness, blocks: tuple[Block, ...], odt: Path, pdf: Path
+    binding: Binding,
+    thickness: Thickness,
+    spine: Spine,
+    cover: Cover | None,
+    written: list[Path],
 ) -> None:
     sides = "雙面 (double-sided)" if thickness.duplex else "單面 (single-sided)"
     print(f"{binding.name_zh} ({binding.key}): {thickness.width_mm:g} mm wide")
@@ -958,11 +1383,18 @@ def describe(
         if thickness.board_mm:
             given += f" + {thickness.board_mm:g} mm board"
         print(f"{given} (the {thickness.pages}-page count says {thickness.computed_mm} mm)")
-    for block in blocks:
+    if cover is None:
+        print("  alignment   the form's own rows (cover alignment off)")
+    else:
+        print(
+            f"  alignment   text {spine.ink_top_pt:.1f}-{spine.ink_bottom_pt:.1f} pt,"
+            f" the cover's {cover.top_pt:.1f}-{cover.bottom_pt:.1f} pt"
+        )
+    for block in spine.blocks:
         note = " (shrunk to fit)" if block.shrunk else ""
-        print(f"  {block.name:<9} {block.size_pt:g} pt{note}  {' / '.join(block.lines)}")
-    for path in (odt, pdf):
-        print(f"  {path.name:<28} {path.stat().st_size:,} bytes")
+        print(f"  {block.name:<9} {block.size_pt:g} pt{note}  {' / '.join(block.texts)}")
+    for path in written:
+        print(f"  {path.name:<34} {path.stat().st_size:,} bytes")
 
 
 def build(args: argparse.Namespace) -> None:
@@ -976,18 +1408,30 @@ def build(args: argparse.Namespace) -> None:
                 "from the PDF that `pixi run build` produced."
             )
         pages = args.pages or document.page_count
-        cjk = cover_cjk_font_name(document)
+        cover = read_cover(document)
 
-    text = read_thesis_text(PROJECT_ROOT)
-    font_file = locate_font(cjk, PROJECT_ROOT)
-    logging.info("The thesis sets Chinese in %s (%s)", cjk, font_file)
+    text = read_thesis_text(PROJECT_ROOT, cover.date)
+    font_file = locate_font(cover.font, PROJECT_ROOT)
+    logging.info("The thesis sets Chinese in %s (%s)", cover.font, font_file)
     absent = missing_characters(font_file, text.characters())
     if absent:
         raise CollectionError(f"{font_file.name} has no glyph for {absent!r}.")
 
+    if not any(same_font(face, name) for face in VERIFIED_FACES for name in font_names(font_file)):
+        logging.warning(
+            "%s is not one of the faces this template ships. Both files are laid "
+            "out alike, but LibreOffice sets some faces' vertical lines about an "
+            "ascent higher than the PDF draws them, so take the PDF as the one "
+            "to print.",
+            font_file.name,
+        )
     font_bytes = embeddable_font(font_file, text.characters())
+    # The ODT keeps the face as it is, because LibreOffice picks the vertical
+    # forms itself; the PDF carries a copy that has already picked them.
+    drawn = drawn_face(font_bytes, text.vertical_characters())
     family = font_names(font_file)[0]
-    ruler = pymupdf.Font(fontbuffer=font_bytes)
+    ruler = pymupdf.Font(fontbuffer=drawn)
+    aligned = None if args.no_cover_alignment else cover
 
     duplex = pages >= DUPLEX_THRESHOLD_PAGES if args.sides == "auto" else args.sides == "double"
     for binding in BINDINGS:
@@ -999,17 +1443,21 @@ def build(args: argparse.Namespace) -> None:
             duplex=duplex,
             paper_mm=args.paper_thickness,
             binding_mm=args.binding_allowance,
-            measured_mm=args.spine_width,
+            measured_mm=args.paperback_width,
         )
-        width_pt = mm(thickness.width_mm)
-        blocks = lay_out(text, width_pt, ruler)
+        spine = lay_out(text, mm(thickness.width_mm), ruler, aligned)
         metadata = spine_metadata(text, binding, thickness)
         stem = args.output_dir / f"{source.stem}-spine-{binding.key}"
         odt, pdf = stem.with_suffix(".odt"), stem.with_suffix(".pdf")
-        write_odt(blocks, width_pt, family, font_bytes, metadata, odt)
-        write_pdf(blocks, width_pt, ruler, metadata, pdf)
-        verify(odt, pdf, blocks, width_pt, family)
-        describe(binding, thickness, blocks, odt, pdf)
+        write_odt(spine, family, font_bytes, metadata, odt)
+        write_pdf(spine, ruler, metadata, pdf)
+        verify(odt, pdf, spine, family)
+        written = [odt, pdf]
+        if args.with_cover:
+            proof = stem.with_name(f"{stem.name}-with-cover").with_suffix(".pdf")
+            write_proof(pdf, source, proof)
+            written.append(proof)
+        describe(binding, thickness, spine, aligned, written)
 
 
 def arguments() -> argparse.ArgumentParser:
@@ -1049,10 +1497,22 @@ def arguments() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--spine-width", type=float, metavar="MM",
+        "--paperback-width", type=float, metavar="MM",
         help=(
-            "measured thickness of the paperback text block and cover, used "
-            "instead of the computed one; the hardcover adds its boards on top"
+            "the 平裝 copy's own measured thickness in mm, used instead of the "
+            "computed one; 精裝 is always this plus its boards, so measure the "
+            "paperback even when writing the hardcover"
+        ),
+    )
+    parser.add_argument(
+        "--with-cover", action="store_true",
+        help="also write <name>-with-cover.pdf: the spine joined to the thesis's cover",
+    )
+    parser.add_argument(
+        "--no-cover-alignment", action="store_true",
+        help=(
+            "keep the form's own row positions instead of stretching them so the "
+            "spine's text lines up with the cover's first and last lines"
         ),
     )
     return parser
