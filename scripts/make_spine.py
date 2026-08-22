@@ -182,10 +182,50 @@ SIDE_CLEARANCE_MM = 0.25
 sys.path.insert(0, str(PROJECT_ROOT))
 from generate_tdr_upload_script import (  # noqa: E402
     CollectionError,
+    braced_group,
     collapse_spaces,
     parse_ntusetup,
     strip_comments,
 )
+
+
+# The commands the shared parser keeps, by unwrapping them or by turning them
+# into the character they stand for. Every other control sequence it deletes,
+# so a title of `\LaTeX{} Thesis` would reach the spine as `Thesis` while the
+# cover still reads otherwise -- silently, and at either end of the value,
+# where comparing against the cover's own text cannot catch it.
+UNDERSTOOD_COMMANDS = frozenset(
+    "begin end texorpdfstring textbf textit emph mbox textrm textsf texttt "
+    "mathrm mathbf mathit operatorname url".split()
+)
+COMMAND = re.compile(r"\\([A-Za-z@]+)\*?|\\([^A-Za-z@])")
+ESCAPED = frozenset("&%#_${}")
+
+
+def dropped_commands(latex: str) -> list[str]:
+    """The control sequences in a value that the parser would throw away."""
+    lost = []
+    for word, symbol in COMMAND.findall(latex):
+        if word and word not in UNDERSTOOD_COMMANDS:
+            lost.append("\\" + word)
+        elif symbol and symbol not in ESCAPED and symbol not in "(),[]":
+            lost.append("\\" + symbol)
+    return lost
+
+
+def raw_ntusetup(path: Path) -> dict[str, str]:
+    """The \\ntusetup values as written, before the parser plains them out."""
+    text = strip_comments(path.read_text(encoding="utf-8"))
+    marker = re.search(r"\\ntusetup\s*\{", text)
+    if not marker:
+        return {}
+    block, _ = braced_group(text, marker.end() - 1)
+    values, cursor = {}, 0
+    pattern = re.compile(r"([A-Za-z][\w*-]*)\s*=\s*\{")
+    while match := pattern.search(block, cursor):
+        value, cursor = braced_group(block, match.end() - 1)
+        values[match.group(1)] = value
+    return values
 
 
 DEGREE_NAMES = {"master": "碩士論文", "doctor": "博士論文"}
@@ -498,21 +538,34 @@ SHIPPED_FACES = ("TW-Kai-98_1", "TW-Sung-98_1")
 
 
 # OS/2 fsType, the font's own statement of what may be embedded where.
+# The permission itself is the low four bits, and it is a level rather than a
+# set of flags: zero is installable, the most permissive of all. The bits above
+# it are separate restrictions and say nothing about that level.
+FSTYPE_LEVEL = 0x000F
 FSTYPE_RESTRICTED = 0x0002  # embedding forbidden without the vendor's leave
 FSTYPE_EDITABLE = 0x0008  # embedding allowed in a document that can be edited
 FSTYPE_NO_SUBSETTING = 0x0100  # embed the whole face or none of it
 FSTYPE_BITMAP_ONLY = 0x0200  # only the bitmaps inside it, never the outlines
 
 
-def embeddable_font(font: FontFile, characters: str) -> tuple[bytes, bool]:
+@dataclass(frozen=True)
+class Embedding:
+    """A face cut to size, with what its own terms allow done to it."""
+
+    face: bytes
+    editable: bool  # may travel inside a document that can be edited
+    subsettable: bool  # may be cut down further
+
+
+def embeddable_font(font: FontFile, characters: str) -> Embedding:
     """Cut the face down to the glyphs the spine prints, and say where it may go.
 
     The shipped 全字庫 faces are tens of megabytes; a spine sets a few dozen
     characters. Every name record is kept so that the family name in the ODT
     still resolves to the embedded file.
 
-    The second value is whether the ODT may carry the subset. A PDF is a
-    printed page, which `fsType` bit 2 allows; an ODT is a document that can
+    Whether the ODT may carry the subset is the second answer. A PDF is a
+    printed page, which `fsType` level 4 allows; an ODT is a document that can
     be edited, which it does not, and an office suite honours only a face
     marked installable. The template's own faces may simply be marked so --
     their licences permit a modified version -- but a face belonging to the
@@ -521,7 +574,8 @@ def embeddable_font(font: FontFile, characters: str) -> tuple[bytes, bool]:
     """
     with font.open(lazy=True) as probe:
         rights = probe["OS/2"].fsType
-    if rights & FSTYPE_RESTRICTED:
+    level = rights & FSTYPE_LEVEL
+    if level & FSTYPE_RESTRICTED:
         raise CollectionError(
             f"{font.name} forbids embedding, so it cannot travel inside the spine "
             "files. Build the thesis with a fontset whose Chinese face ships with "
@@ -555,7 +609,7 @@ def embeddable_font(font: FontFile, characters: str) -> tuple[bytes, bool]:
         subsetter.populate(text=characters)
         subsetter.subset(face)
 
-    editable = not rights or bool(rights & FSTYPE_EDITABLE)
+    editable = not level or bool(level & FSTYPE_EDITABLE)
     if not editable and font.shipped:
         face["OS/2"].fsType = 0
         editable = True
@@ -569,7 +623,7 @@ def embeddable_font(font: FontFile, characters: str) -> tuple[bytes, bool]:
     written = io.BytesIO()
     face.save(written)
     face.close()
-    return written.getvalue(), editable
+    return Embedding(written.getvalue(), editable, not rights & FSTYPE_NO_SUBSETTING)
 
 
 def vertical_substitutions(font: TTFont) -> dict[str, str]:
@@ -1029,6 +1083,7 @@ def write_pdf(
     font: pymupdf.Font,
     metadata: dict[str, str],
     target: Path,
+    subsettable: bool = True,
 ) -> None:
     """Draw the spine directly, run by run.
 
@@ -1067,7 +1122,10 @@ def write_pdf(
         for writer, pivot in turned:
             writer.write_text(page, morph=(pivot, pymupdf.Matrix(-90)))
         document.set_metadata(metadata)
-        document.subset_fonts()
+        if subsettable:
+            # The buffer is already cut to the spine's characters; this trims
+            # whatever the layout tables dragged along with them.
+            document.subset_fonts()
         document.save(target, garbage=4, deflate=True)
     logging.info("Wrote %s", target)
 
@@ -1527,22 +1585,34 @@ def build(args: argparse.Namespace) -> None:
             "to print.",
             font_file.name,
         )
-    # #8's safety net: the shared LaTeX parser drops a command it does not
-    # know, and the spine would then quietly say something the cover does not.
+    # Two ways the spine could letter something the cover does not: a value
+    # holding LaTeX the shared parser throws away, which is invisible when it
+    # sits at either end of the value, and a main.pdf older than the
+    # ntusetup.tex beside it. Neither is worth stopping for, and both are
+    # worth saying out loud.
+    written = raw_ntusetup(PROJECT_ROOT / "ntusetup.tex")
+    for name in ("university", "institute", "title", "author"):
+        lost = dropped_commands(written.get(name, ""))
+        if lost:
+            logging.warning(
+                "ntusetup.tex writes %s with %s, which the spine cannot read and "
+                "leaves out. The cover still prints it, so the two will differ.",
+                name,
+                ", ".join(sorted(set(lost))),
+            )
     for name in ("university", "institute", "degree", "title", "author"):
         wording = getattr(text, name)
         if not cover.prints(wording):
             logging.warning(
                 "The cover does not print %s %r. Check that main.pdf is the build "
-                "of this ntusetup.tex, and that the value holds no LaTeX the "
-                "spine cannot read.",
+                "of this ntusetup.tex.",
                 name,
                 wording,
             )
-    font_bytes, editable = embeddable_font(font_file, text.characters())
+    embedding = embeddable_font(font_file, text.characters())
     # The ODT keeps the face as it is, because LibreOffice picks the vertical
     # forms itself; the PDF carries a copy that has already picked them.
-    drawn = drawn_face(font_bytes, text.vertical_characters())
+    drawn = drawn_face(embedding.face, text.vertical_characters())
     family = font_names(font_file)[0]
     ruler = pymupdf.Font(fontbuffer=drawn)
     aligned = None if args.no_cover_alignment else cover
@@ -1563,9 +1633,9 @@ def build(args: argparse.Namespace) -> None:
         metadata = spine_metadata(text, binding, thickness)
         stem = args.output_dir / f"{source.stem}-spine-{binding.key}"
         odt, pdf = stem.with_suffix(".odt"), stem.with_suffix(".pdf")
-        write_odt(spine, family, font_bytes if editable else None, metadata, odt)
-        write_pdf(spine, ruler, metadata, pdf)
-        verify(odt, pdf, spine, family, editable)
+        write_odt(spine, family, embedding.face if embedding.editable else None, metadata, odt)
+        write_pdf(spine, ruler, metadata, pdf, embedding.subsettable)
+        verify(odt, pdf, spine, family, embedding.editable)
         written = [odt, pdf]
         if args.with_cover:
             proof = stem.with_name(f"{stem.name}-with-cover").with_suffix(".pdf")
