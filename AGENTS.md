@@ -194,10 +194,15 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   The advisor is the *last* 指導教授 line, since a title may begin with those
   characters, and only the title has to be told from its English twin by
   being *mostly* Chinese: an English title quoting a Chinese term is still
-  the English one. The heading wraps too — 公共衛生學院's own
+  the English one. The title is the *first* such run and no more — an English
+  title that wraps around a Chinese quotation would otherwise be swallowed
+  into it — and a cover whose two titles do not read as one Chinese block
+  then one English block is warned about rather than guessed at. The heading wraps too — 公共衛生學院's own
   衛生福利部暨國立臺灣大學傳染病防治研究及教育中心 does not fit one line at
   18 pt — so it is rejoined before `split_heading` sees it. Every rejoin puts
-  a space in only where the break fell between two Latin words.
+  a space in only where the break fell between two Latin words, a word
+  character being any letter or digit a vertical line turns on its side,
+  `é` as much as `e`.
 - The cover prints the university, the college and the institute as one line
   and the spine sets only the first and the last, so `split_heading` looks the
   college up in `ntu-academic-units.tex` and falls back to the 大學/學院
