@@ -170,9 +170,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   forbids embedding, and 0x0200, which permits only the face's bitmaps to
   travel — both outputs carry outlines.
 - The class stamps a linked `doi:` line a centimetre from the foot of page
-  one. `read_cover` skips anything inside a link, or the spine is stretched to
-  the stamp instead of to the cover's last line — a 68 pt error the
-  `--with-cover` proof makes obvious.
+  one. `read_cover` skips a line that both says `doi:` and sits inside a link,
+  or the spine is stretched to the stamp instead of to the cover's last line —
+  a 68 pt error the `--with-cover` proof makes obvious. Both halves are
+  needed: a title may carry a link of its own, and one may begin with `doi`.
 - Every page of `main.pdf` is an interior sheet, page one included: the card
   cover is printed from `pixi run cover`, which reproduces page one rather
   than replacing it. `PAPERBACK_BINDING_MM` pays for that card on top.
@@ -212,7 +213,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   longer breaks it into a second column and lays the whole block out
   differently. A Latin space inside a CJK line is enough to do it, and
   LibreOffice ignores `fo:wrap-option` on a Writer cell, so the room has to be
-  left rather than the wrap forbidden.
+  left rather than the wrap forbidden. `block_room` reports half of that slack
+  as the block's inset, since a centred line sits in the middle of the room it
+  is given; reporting zero puts every gap in the aligned layout out of
+  proportion.
 - A vertical line is not horizontal text turned on its side: wide characters
   stay upright, Latin runs turn a quarter turn and advance at their own width,
   and brackets and punctuation take the shapes the font's `vert` feature

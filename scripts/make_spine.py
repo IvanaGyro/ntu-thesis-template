@@ -202,12 +202,12 @@ COVER_ADVISOR = "指導教授"
 
 # 頁尾的 doi: 戳記，不屬於封面的文字。
 # The class's own doi: stamp, which is an overlay rather than a line of the
-# cover. Matching what it says rather than the link around it: a title may
-# carry a link of its own, and dropping every linked line would drop that too.
+# cover. Both halves are needed to name it: a title may carry a link of its
+# own, and one may begin with the word doi.
 COVER_OVERLAY = re.compile(r"^doi:")
 
 # 校名、學院、系所印成一行；沒有學院清單可對時，用「大學」「學院」的字尾拆開。
-HEADING = re.compile(r"^(?P<university>.*?大學)(?:.*學院)?(?P<institute>.+)$")
+HEADING = re.compile(r"^(?P<university>.*?大學)(?:.*?學院)?(?P<institute>.+)$")
 
 # Anything at or above this code point is CJK rather than Latin, which is
 # enough to tell the cover's two languages apart.
@@ -311,15 +311,19 @@ def read_cover(document: pymupdf.Document) -> Cover:
     sits inside a link is left out.
     """
     page = document[0]
+    overlays = [pymupdf.Rect(link["from"]) for link in page.get_links()]
     font, lines = "", []
     for block in page.get_text("dict")["blocks"]:
         for line in block.get("lines", []):
             text = "".join(span["text"] for span in line["spans"]).strip()
             if not text:
                 continue
-            if COVER_OVERLAY.match(text):
-                continue
             box = pymupdf.Rect(line["bbox"])
+            # The centre rather than the whole box: a glyph can overhang the
+            # link rectangle drawn around it by a fraction of a point.
+            middle = pymupdf.Point((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2)
+            if COVER_OVERLAY.match(text) and any(middle in link for link in overlays):
+                continue
             lines.append(
                 CoverLine(
                     text=text,
@@ -1041,8 +1045,11 @@ def block_room(block: Block) -> tuple[float, float]:
     the first of them.
     """
     if block.vertical:
-        deepest = max(line.advance for line in block.lines) + LINE_SLACK_EM
-        return deepest * block.size_pt, 0.0
+        deep = max(line.advance for line in block.lines) * block.size_pt
+        room = deep + LINE_SLACK_EM * block.size_pt
+        # A justified line starts at the top of its row; a centred one sits in
+        # the middle of it, so half the slack is above the ink.
+        return room, 0.0 if block.justified else (room - deep) / 2
     return len(block.lines) * block.pitch_pt, (block.pitch_pt - block.size_pt) / 2
 
 
