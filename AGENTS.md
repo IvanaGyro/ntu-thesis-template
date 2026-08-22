@@ -184,6 +184,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   disagree about the title, the author, or the date. Values are run through
   `collapse_spaces` for the same reason TeX collapses them: a title wrapped
   across lines in `ntusetup.tex` must not reach the spine with a newline in it.
+  A line ended with `%` joins the next without even a space, which is how a
+  Chinese title is wrapped, so `tex_source` strips comments TeX's way before
+  that — the shared `strip_comments` leaves the break, which is right for the
+  abstracts it also reads and wrong here.
 - The spine's rows are stretched so its text spans the same extent as the
   cover's, measured off page one of `main.pdf`. Only the gaps and the depth
   the heading justifies across take the stretch; the point sizes stay the
@@ -192,7 +196,8 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   date onto a second page.
 - The year and month are read from the cover's 「中華民國 NNN 年 M 月」 rather
   than from the clock, because `ntusetup.tex` ships with `date` commented out
-  and the spine is written long after the build.
+  and the spine is written long after the build. It is the *last* such line on
+  the page: a title may carry a 中華民國 date of its own, set above it.
 - A vertical line is not horizontal text turned on its side: wide characters
   stay upright, Latin runs turn a quarter turn and advance at their own width,
   and brackets and punctuation take the shapes the font's `vert` feature

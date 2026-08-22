@@ -187,9 +187,22 @@ from generate_tdr_upload_script import (  # noqa: E402
     CollectionError,
     braced_group,
     collapse_spaces,
-    parse_ntusetup,
+    latex_to_plain,
     strip_comments,
 )
+
+
+# TeX's own reading of a comment: the % takes the rest of the line, the line
+# break, and the next line's indent with it, so `題目%⏎續` sets as one word.
+# That is how a Chinese title is wrapped, since an ordinary line break would
+# put a space in the middle of it. The shared strip_comments leaves the break
+# behind, which is right for the abstracts it also reads -- a blank line after
+# a comment still starts a paragraph -- so the spine does its own.
+TEX_COMMENT = re.compile(r"(?<!\\)%[^\n]*\n[ \t]*(?=\S)|(?<!\\)%[^\n]*")
+
+
+def tex_source(text: str) -> str:
+    return TEX_COMMENT.sub("", text)
 
 
 # The commands the shared parser keeps, by unwrapping them or by turning them
@@ -218,7 +231,7 @@ def dropped_commands(latex: str) -> list[str]:
 
 def raw_ntusetup(path: Path) -> dict[str, str]:
     """The \\ntusetup values as written, before the parser plains them out."""
-    text = strip_comments(path.read_text(encoding="utf-8"))
+    text = tex_source(path.read_text(encoding="utf-8"))
     marker = re.search(r"\\ntusetup\s*\{", text)
     if not marker:
         return {}
@@ -308,9 +321,14 @@ def read_thesis_text(root: Path, cover_date: tuple[int, int] | None) -> SpineTex
     TeX collapses a run of spaces and newlines into one space, so a value
     wrapped across lines inside its braces reaches the class as a single line.
     Collapsing it here too keeps a newline out of the spine, where it would be
-    counted as a character and looked up in the font as a glyph.
+    counted as a character and looked up in the font as a glyph. A line ended
+    with a comment joins the next without even that space, which is how a
+    Chinese title is wrapped, so the comments go first.
     """
-    setup = {key: collapse_spaces(value) for key, value in parse_ntusetup(root / "ntusetup.tex").items()}
+    setup = {
+        key: collapse_spaces(latex_to_plain(value))
+        for key, value in raw_ntusetup(root / "ntusetup.tex").items()
+    }
     missing = [key for key in ("university", "institute", "title", "author") if not setup.get(key)]
     if missing:
         raise CollectionError(
@@ -418,14 +436,16 @@ def read_cover(document: pymupdf.Document) -> Cover:
             "Page 1 of the built PDF prints no Chinese, so its Chinese font cannot "
             "be identified. Build the cover before writing the spine."
         )
-    dated = COVER_DATE.search(page.get_text())
+    # The cover's date is the last of its kind on the page: a title may well
+    # carry a 中華民國 date of its own, and it is set above this one.
+    printed_dates = COVER_DATE.findall(page.get_text())
     return Cover(
         font=font,
         width_pt=page.rect.width,
         height_pt=page.rect.height,
         top_pt=top,
         bottom_pt=bottom,
-        date=(int(dated.group(1)), int(dated.group(2))) if dated else None,
+        date=(int(printed_dates[-1][0]), int(printed_dates[-1][1])) if printed_dates else None,
         text=printed,
     )
 
