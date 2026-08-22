@@ -537,10 +537,6 @@ class FontFile:
     def name(self) -> str:
         return self.path.name if not self.index else f"{self.path.name}#{self.index}"
 
-    @property
-    def shipped(self) -> bool:
-        return any(same_font(face, name) for face in SHIPPED_FACES for name in font_names(self))
-
     def open(self, **kwargs) -> TTFont:
         return TTFont(self.path, fontNumber=self.index, **kwargs)
 
@@ -706,15 +702,36 @@ def collection_size(path: Path) -> int:
         return 1
 
 
-# The Chinese faces this template redistributes. Two things are true of these
-# and of no others: their licences (政府資料開放授權條款-1.0 or OFL-1.1) permit
-# a modified version, so a subset of them may be written with its embedding
-# rights relaxed; and the two outputs have been checked against them, with
-# LibreOffice setting the ODT within a tenth of a millimetre of where the PDF
-# draws it. Other faces are laid out the same way and print the same from the
-# PDF, but LibreOffice sets some of them -- 標楷體 among them -- about one
-# ascent higher on the page.
-SHIPPED_FACES = ("TW-Kai-98_1", "TW-Sung-98_1")
+# The Chinese faces this template redistributes, named by the files they are.
+# Two things are true of these and of no others: their licences (政府資料開放
+# 授權條款-1.0 or OFL-1.1) permit a modified version, so a subset of them may be
+# written with its embedding rights relaxed; and the two outputs have been
+# checked against them, with LibreOffice setting the ODT within a tenth of a
+# millimetre of where the PDF draws it. Other faces are laid out the same way
+# and print the same from the PDF, but LibreOffice sets some of them -- 標楷體
+# among them -- about one ascent higher on the page.
+SHIPPED_FILES = ("fonts/chinese/TW-Kai-98_1.ttf", "fonts/chinese/TW-Sung-98_1.ttf")
+
+
+def redistributed(font: FontFile, root: Path) -> bool:
+    """Whether a file is one of the two faces this repository ships.
+
+    The question a name cannot answer. What those licences cover is these
+    faces, and a file of the user's own that merely answers to one of their
+    names is not one of them: relabelling its embedding rights would hand out
+    a permission nobody gave. So the file itself is asked -- by path, or,
+    where the same 全字庫 face is installed elsewhere on the machine, by the
+    identity marks of the file the repository ships.
+    """
+    for relative in SHIPPED_FILES:
+        shipped = root / relative
+        if not shipped.exists():
+            continue
+        if not font.index and font.path.resolve() == shipped.resolve():
+            return True
+        if same_revision(file_marks(FontFile(shipped)), file_marks(font)):
+            return True
+    return False
 
 
 # OS/2 fsType, the font's own statement of what may be embedded where.
@@ -737,7 +754,7 @@ class Embedding:
     subsettable: bool  # may be cut down further
 
 
-def embeddable_font(font: FontFile, characters: str) -> Embedding:
+def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding:
     """Cut the face down to the glyphs the spine prints, and say where it may go.
 
     The shipped 全字庫 faces are tens of megabytes; a spine sets a few dozen
@@ -790,7 +807,7 @@ def embeddable_font(font: FontFile, characters: str) -> Embedding:
         subsetter.subset(face)
 
     editable = not level or bool(level & FSTYPE_EDITABLE)
-    if not editable and font.shipped:
+    if not editable and relabel:
         face["OS/2"].fsType = 0
         editable = True
     elif not editable:
@@ -1794,7 +1811,8 @@ def build(args: argparse.Namespace) -> None:
     if absent:
         raise CollectionError(f"{font_file.name} has no glyph for {absent!r}.")
 
-    if not font_file.shipped:
+    shipped = redistributed(font_file, PROJECT_ROOT)
+    if not shipped:
         logging.warning(
             "%s is not one of the faces this template ships. Both files are laid "
             "out alike, but LibreOffice sets some faces' vertical lines about an "
@@ -1802,7 +1820,7 @@ def build(args: argparse.Namespace) -> None:
             "to print.",
             font_file.name,
         )
-    embedding = embeddable_font(font_file, text.characters())
+    embedding = embeddable_font(font_file, text.characters(), shipped)
     # The ODT keeps the face as it is, because LibreOffice picks the vertical
     # forms itself; the PDF carries a copy that has already picked them.
     drawn = drawn_face(embedding.face, text.vertical_characters())

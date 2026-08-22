@@ -163,9 +163,13 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - LibreOffice silently substitutes an embedded font that is not marked
   installable, which is why `embeddable_font` clears `OS/2.fsType` on the
   subset — TW-Kai ships as preview-and-print only. It does that **only** for
-  the faces in `SHIPPED_FACES`, whose licences (政府資料開放授權條款-1.0 /
-  OFL-1.1) permit a modified version. A print-only face of the user's own is
-  carried by the PDF, which is what that permission covers, and merely named
+  the two files in `SHIPPED_FILES`, whose licences (政府資料開放授權條款-1.0 /
+  OFL-1.1) permit a modified version. `redistributed` decides that by file and
+  not by name — a print-only face of the user's own that answers to `TW-Kai-98_1`
+  is not covered by 全字庫's licence, and relabelling it would grant a permission
+  nobody gave — while the identity marks let the same 全字庫 file installed
+  elsewhere on the machine still be recognised as itself. Such a face is
+  carried by the PDF, which is what preview-and-print covers, and merely named
   in the ODT. Two fsType bits are refused outright instead: 0x0002, which
   forbids embedding, and 0x0200, which permits only the face's bitmaps to
   travel — both outputs carry outlines.
