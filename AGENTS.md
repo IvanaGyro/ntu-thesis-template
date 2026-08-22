@@ -186,8 +186,13 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   cover's fixed line order is what identifies each field — the school, the
   degree, the title in both languages, the author in both, the advisor, the
   date — so a change to `\makecover`'s order is a change to `read_spine_text`.
-  A title that wraps takes more than one Chinese line and is rejoined; the
-  author is always the last Chinese line before 指導教授.
+  The English school block is told apart by being set smaller than the degree
+  line, the author by sitting two lines above the advisor, and only the title
+  has to be told from its English twin by being *mostly* Chinese — an English
+  title quoting a Chinese term is still the English one. The advisor is the
+  *last* 指導教授 line, since a title may begin with those characters. A title
+  that wraps is rejoined, with a space only where the break fell between two
+  Latin words.
 - The cover prints the university, the college and the institute as one line
   and the spine sets only the first and the last, so `split_heading` looks the
   college up in `ntu-academic-units.tex` and falls back to the 大學/學院
@@ -201,6 +206,13 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - The year and month are read from the cover's 「中華民國 NNN 年 M 月」, the
   *last* such line on the page: a title may carry a 中華民國 date of its own,
   set above it.
+- Every vertical line is fitted with `LINE_SLACK_EM` — one character — to
+  spare, and `block_room` gives it that room. An exact fit is not a safe one:
+  the PDF sets a line in one column, and a reader whose metrics make it a hair
+  longer breaks it into a second column and lays the whole block out
+  differently. A Latin space inside a CJK line is enough to do it, and
+  LibreOffice ignores `fo:wrap-option` on a Writer cell, so the room has to be
+  left rather than the wrap forbidden.
 - A vertical line is not horizontal text turned on its side: wide characters
   stay upright, Latin runs turn a quarter turn and advance at their own width,
   and brackets and punctuation take the shapes the font's `vert` feature

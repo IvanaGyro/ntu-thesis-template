@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import itertools
 import logging
 import math
 import os
@@ -159,6 +160,14 @@ HEADING_COLUMN_PITCH = 1.01
 # 15 pt on a 14 pt body.
 DATE_LINE_PITCH = 15.0 / 14.0
 
+# One character's worth of room left at the foot of every vertical line. An
+# exact fit is not a safe one: the PDF sets a line in one column, and a reader
+# whose metrics make it a hair longer -- a Latin space inside a CJK line is
+# enough -- would break it into a second column and lay the whole block out
+# differently. LibreOffice ignores fo:wrap-option on a Writer cell, so the
+# room has to be left rather than the wrap forbidden.
+LINE_SLACK_EM = 1.0
+
 # How close to the edge of the spine a character may set. The official 8 mm
 # sample leaves about 0.3 mm beside its widest line, the year; a quarter of a
 # millimetre is a shade tighter than that, so a spine as wide as the sample
@@ -188,8 +197,14 @@ COVER_DATE = re.compile(r"中華民國\s*(\d+)\s*年\s*(\d+)\s*月")
 # 封面第二行：碩士論文／博士論文。
 COVER_DEGREE = re.compile(r"^[碩博]士(?:學位)?論文$")
 
-# 指導教授那一行，緊接在題目與作者之後。
+# 指導教授那一行，在題目與作者之後。
 COVER_ADVISOR = "指導教授"
+
+# 頁尾的 doi: 戳記，不屬於封面的文字。
+# The class's own doi: stamp, which is an overlay rather than a line of the
+# cover. Matching what it says rather than the link around it: a title may
+# carry a link of its own, and dropping every linked line would drop that too.
+COVER_OVERLAY = re.compile(r"^doi:")
 
 # 校名、學院、系所印成一行；沒有學院清單可對時，用「大學」「學院」的字尾拆開。
 HEADING = re.compile(r"^(?P<university>.*?大學)(?:.*學院)?(?P<institute>.+)$")
@@ -251,10 +266,18 @@ class CoverLine:
     text: str
     top_pt: float
     bottom_pt: float
+    size_pt: float
 
     @property
     def chinese(self) -> bool:
-        return any(ord(character) >= CJK_FIRST for character in self.text)
+        """Whether this is one of the cover's Chinese lines rather than its English.
+
+        Most of it has to be Chinese, not merely some: an English title that
+        quotes a Chinese term is still the English title.
+        """
+        letters = [character for character in self.text if not character.isspace()]
+        chinese = [c for c in letters if ord(c) >= CJK_FIRST]
+        return bool(letters) and 2 * len(chinese) > len(letters)
 
 
 @dataclass(frozen=True)
@@ -288,20 +311,23 @@ def read_cover(document: pymupdf.Document) -> Cover:
     sits inside a link is left out.
     """
     page = document[0]
-    overlays = [pymupdf.Rect(link["from"]) for link in page.get_links()]
     font, lines = "", []
     for block in page.get_text("dict")["blocks"]:
         for line in block.get("lines", []):
             text = "".join(span["text"] for span in line["spans"]).strip()
             if not text:
                 continue
-            box = pymupdf.Rect(line["bbox"])
-            # The centre rather than the whole box: a glyph can overhang the
-            # link rectangle drawn around it by a fraction of a point.
-            middle = pymupdf.Point((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2)
-            if any(middle in overlay for overlay in overlays):
+            if COVER_OVERLAY.match(text):
                 continue
-            lines.append(CoverLine(text=text, top_pt=box.y0, bottom_pt=box.y1))
+            box = pymupdf.Rect(line["bbox"])
+            lines.append(
+                CoverLine(
+                    text=text,
+                    top_pt=box.y0,
+                    bottom_pt=box.y1,
+                    size_pt=max(span["size"] for span in line["spans"]),
+                )
+            )
             for span in line["spans"] if not font else ():
                 if any(ord(character) >= CJK_FIRST for character in span["text"]):
                     font = re.sub(r"^[A-Z]{6}\+", "", span["font"])
@@ -346,13 +372,34 @@ def split_heading(heading: str, root: Path) -> tuple[str, str]:
     )
 
 
+WORD = re.compile(r"[A-Za-z0-9]")
+
+
+def join_wrapped(lines: list[str]) -> str:
+    """Put a line the cover broke back together.
+
+    A Chinese line simply resumes, so the halves are butted together; a line
+    broken between two Latin words was broken at a space, and putting them
+    back without one would make a single word of the two.
+    """
+    joined = ""
+    for line in lines:
+        if joined and WORD.match(joined[-1]) and WORD.match(line[0]):
+            joined += " "
+        joined += line
+    return joined
+
+
 def read_spine_text(cover: Cover, root: Path) -> SpineText:
     """Collect what the spine letters, in the cover's own words.
 
-    The cover is set in a fixed order -- the school, the degree, the title in
-    both languages, the author in both, the advisor, the date -- so its own
-    Chinese lines say which is which. A title long enough to wrap takes more
-    than one of them, and the author is always the last before the advisor.
+    The cover is set in a fixed order, and the class gives each part of it a
+    size: the school and the degree, then the school again in English a size
+    or two smaller, then -- back at the degree's size -- the title in both
+    languages, the author in both, the advisor, and the date. So the English
+    school block is told apart by its size, the author by its place two lines
+    above the advisor, and only the title has to be told from its English
+    twin by being Chinese.
     """
     lines = cover.lines
     degree = next((i for i, line in enumerate(lines) if COVER_DEGREE.match(line.text)), None)
@@ -361,19 +408,37 @@ def read_spine_text(cover: Cover, root: Path) -> SpineText:
             "The cover has no 碩士論文 or 博士論文 line, so the spine cannot tell "
             "which degree it is for."
         )
+    # The last of them: a title may begin with 指導教授, and is set above it.
     advisor = next(
-        (i for i, line in enumerate(lines) if line.text.startswith(COVER_ADVISOR)), None
+        (
+            i
+            for i in range(len(lines) - 1, degree, -1)
+            if lines[i].text.startswith(COVER_ADVISOR)
+        ),
+        None,
     )
-    if advisor is None or advisor <= degree:
+    if advisor is None:
         raise CollectionError(
             f"The cover has no {COVER_ADVISOR} line after its degree, so the spine "
             "cannot tell its title from its author."
         )
-    written = [line.text for line in lines[degree + 1 : advisor] if line.chinese]
-    if len(written) < 2:
+    # The school's English name is set smaller than the degree; what is left
+    # at the degree's own size is the title, the title in English, and the
+    # author in both.
+    body = [
+        line for line in lines[degree + 1 : advisor] if line.size_pt >= lines[degree].size_pt
+    ]
+    if len(body) < 4:
         raise CollectionError(
-            "The cover prints no Chinese title and author between its degree and "
-            "its advisor, so the spine has nothing to letter."
+            "The cover does not print a title and an author in both languages "
+            "between its degree and its advisor, so the spine cannot read it."
+        )
+    titles = body[:-2]
+    chinese = list(itertools.takewhile(lambda line: line.chinese, titles))
+    if not chinese or len(chinese) == len(titles):
+        raise CollectionError(
+            "The cover's title does not read as a Chinese one followed by an "
+            "English one, so the spine cannot tell which is which."
         )
     printed = [found for found in (COVER_DATE.search(line.text) for line in lines) if found]
     if not printed:
@@ -384,9 +449,9 @@ def read_spine_text(cover: Cover, root: Path) -> SpineText:
         university=university,
         institute=institute,
         degree=lines[degree].text,
-        # Everything but the last is the title; a long one wraps.
-        title=collapse_spaces("".join(written[:-1])),
-        author=collapse_spaces(written[-1]),
+        title=collapse_spaces(join_wrapped([line.text for line in chinese])),
+        # Two lines above the advisor: the author, then the author in English.
+        author=collapse_spaces(body[-2].text),
         # The last date on the page: a title may carry one of its own, above it.
         roc_year=int(printed[-1].group(1)),
         month=int(printed[-1].group(2)),
@@ -904,7 +969,9 @@ def fit_size(
         size = capped(name, across / deepest, height_pt / (len(lines) * DATE_LINE_PITCH))
         return size, size * DATE_LINE_PITCH
     pitch_factor = HEADING_COLUMN_PITCH if name == "heading" else 1.0
-    size = capped(name, height_pt / deepest, across / (pitch_factor * len(lines)))
+    size = capped(
+        name, height_pt / (deepest + LINE_SLACK_EM), across / (pitch_factor * len(lines))
+    )
     return size, size * pitch_factor
 
 
@@ -974,7 +1041,8 @@ def block_room(block: Block) -> tuple[float, float]:
     the first of them.
     """
     if block.vertical:
-        return max(line.advance for line in block.lines) * block.size_pt, 0.0
+        deepest = max(line.advance for line in block.lines) + LINE_SLACK_EM
+        return deepest * block.size_pt, 0.0
     return len(block.lines) * block.pitch_pt, (block.pitch_pt - block.size_pt) / 2
 
 
@@ -1247,9 +1315,13 @@ def automatic_styles(spine: Spine, family: str) -> str:
         '<style:style style:name="Upright" style:family="table-cell">'
         '<style:table-cell-properties fo:padding="0pt" fo:border="none" '
         'style:vertical-align="middle"/></style:style>',
+        # no-wrap matters: the PDF sets each line in one column, and a reader
+        # whose metrics make a line a hair too long would otherwise break it
+        # into a second one and lay the whole block out differently.
         '<style:style style:name="Sideways" style:family="table-cell">'
         '<style:table-cell-properties fo:padding="0pt" fo:border="none" '
-        'style:vertical-align="middle" style:writing-mode="tb-rl"/></style:style>',
+        'style:vertical-align="middle" style:writing-mode="tb-rl" '
+        'fo:wrap-option="no-wrap"/></style:style>',
         '<style:style style:name="Blank" style:family="paragraph">'
         '<style:paragraph-properties fo:margin-top="0pt" fo:margin-bottom="0pt"/>'
         "</style:style>",
