@@ -1,34 +1,13 @@
 #!/usr/bin/env python3
 """Write the spine of the bound thesis (書側) as ODT and PDF, in both bindings.
 
-A bindery cannot letter a spine until it knows how thick the finished book
-will be, and that follows from the thesis itself: how many pages `pixi run
-build` produced, whether they are printed on one side of the sheet or both,
-and how thick a sheet of the chosen paper is. This script reads the page count
-straight out of `main.pdf`, turns it into a millimetre width, and writes the
-artwork at exactly that width -- once for the 平裝 (paperback) copy and once
-for the 精裝 (hardcover) copy, whose boards add a fixed 4 mm.
-
-Four files come out, two per binding:
-
-* the ODT, the editable master a print shop can open and adjust, with the
-  thesis's own Chinese face embedded so it sets correctly on their machine;
-* the PDF, drawn here rather than converted, so that writing a spine needs
-  nothing on the machine beyond the packages `pixi` installs.
-
-Both are laid out from one table of measurements taken off NTU's official
-spine form, and both set every character on the glyph HarfBuzz chooses for a
-vertical line, so the two agree by construction. The text runs top to bottom
-in 真正直書 (true vertical setting), the way the form has it: the university
-and the institute side by side at the head, then the degree, the title, the
-author, and the ROC year and month at the foot.
-
-What it says comes from main.tex and ntusetup.tex -- the thesis's own source,
-read with the same parser the TDR upload filler uses. The built PDF is opened
-only to be counted.
-
-Like `cover` and `protect`, this step is deliberately manual; `pixi run build`
-never calls it.
+A bindery needs the artwork at the finished book's thickness, which follows
+from the page count of `main.pdf`. Four files come out, two per binding: the
+ODT a print shop can edit, and the PDF to print. Both are laid out from one
+table of measurements taken off NTU's official form and set every character
+on the glyph HarfBuzz chooses for a vertical line, so the two agree. What the
+spine says comes from main.tex and ntusetup.tex; the built PDF is opened only
+to be counted.
 """
 
 from __future__ import annotations
@@ -64,6 +43,7 @@ MM_PER_IN = 25.4
 PT_PER_IN = 72.0
 PAGE_HEIGHT_PT = 297.0 * PT_PER_IN / MM_PER_IN  # the A4 height of the thesis
 
+
 def inch(value: float) -> float:
     return value * PT_PER_IN
 
@@ -72,33 +52,23 @@ def mm(value: float) -> float:
     return value * PT_PER_IN / MM_PER_IN
 
 
-# --------------------------------------------------------------------------
-# How thick the finished book is
-# --------------------------------------------------------------------------
+# --- How thick the finished book is ----------------------------------------
 #
-# 內頁紙材：80 磅道林紙。臺灣印刷業以「條」計厚度，1 條 = 0.01 mm，80 磅
-# （80 g/m²）道林紙約 10 條。
-#
-# The trade measures paper in 條, hundredths of a millimetre. 80 磅道林紙 --
-# the uncoated woodfree stock a thesis text block is normally printed on --
-# is about 10 條, so a sheet of it is a tenth of a millimetre thick.
+# 內頁紙材：80 磅道林紙約 10 條，即 0.1 mm。
+# 80 磅道林紙, the usual text stock, is about 10 條 -- hundredths of a mm.
 PAPER_THICKNESS_MM = 0.10
 
 # 平裝（膠裝）的封面與書背膠層，約 1 mm。
 # Perfect binding adds about a millimetre for the cover and the glue.
 PAPERBACK_BINDING_MM = 1.00
 
-# 精裝的紙板，兩面各 2 mm。官方範例的 8 mm 平裝與 12 mm 精裝正好差 4 mm。
-# A hardcover adds 2 mm of board per side. That 4 mm is exactly the gap
-# between the 8 mm paperback and the 12 mm hardcover of NTU's own sample pair.
+# 精裝的紙板，兩面各 2 mm，正是官方 8 mm 平裝與 12 mm 精裝的差距。
+# 2 mm of board a side: the gap between NTU's own 8 mm and 12 mm samples.
 BOARD_THICKNESS_MM = 4.00
 
 # 少於 80 頁預設單面列印，80 面以上預設雙面列印。
-# Below this many pages of the built PDF a thesis is printed single-sided, one
-# page per sheet; at or above it, double-sided, two pages per sheet. Every
-# page of the built PDF is an interior page -- the card cover is printed from
-# `pixi run cover`, which reproduces page one rather than replacing it -- so
-# the count is simply the PDF's own.
+# Every page of the built PDF is an interior page: `pixi run cover` reproduces
+# page one for the card cover rather than replacing it.
 DUPLEX_THRESHOLD_PAGES = 80
 
 
@@ -115,18 +85,13 @@ BINDINGS = (
 )
 
 
-# --------------------------------------------------------------------------
-# The layout of the official form
-# --------------------------------------------------------------------------
+# --- The layout of the official form ---------------------------------------
 #
-# Row heights in inches, measured off NTU's spine form. The form is one
-# single-column table down the length of an A4 page; the named rows carry
-# text and the unnamed ones are the spacing between them.
-#
-# The form places the two heading columns with absolutely positioned drawing
-# frames rather than in the table. Their offset and height are written out
-# here as ordinary rows -- 0.3942 + 0.9450 + 0.3143 is the 1.6535 in row they
-# sit inside -- so that one table drives the whole page.
+# Row heights in inches, measured off NTU's form: named rows carry text,
+# unnamed ones are the spacing between them. The form places its two heading
+# columns in drawing frames instead of the table; those are written out here
+# as three rows (0.3942 + 0.9450 + 0.3143 = its 1.6535 in row) so that one
+# table drives the page.
 LAYOUT: tuple[tuple[str, float], ...] = (
     ("", 0.9451),
     ("", 0.3942),
@@ -157,46 +122,36 @@ NOMINAL_SIZE_PT = {
     "date": 14.0,
 }
 
-# The form sets the two heading columns 1.01 em apart, near enough to solid,
-# so that the university and the institute read as one block rather than as
-# two separate lines. Pinning the pitch also keeps a face whose natural line
-# height exceeds one em from pushing the second column off a narrow spine.
+# The form sets the two heading columns 1.01 em apart, near enough to solid.
+# Pinning it also keeps a face with a taller natural line height from pushing
+# the second column off a narrow spine.
 HEADING_COLUMN_PITCH = 1.01
 
 # The date is the one horizontal block on the spine; the form leads it at
 # 15 pt on a 14 pt body.
 DATE_LINE_PITCH = 15.0 / 14.0
 
-# One character's worth of room left at the foot of every vertical line. An
-# exact fit is not a safe one: the layout puts each line in a column of its
-# own, and a reader whose metrics make it a hair longer -- a Latin space
-# inside a CJK line is enough -- would break it into a second column and lay
-# the whole block out differently. LibreOffice ignores fo:wrap-option on a
-# Writer cell, so the room has to be left rather than the wrap forbidden.
+# One character's worth of room at the foot of every vertical line: a reader
+# whose metrics make a line a hair longer would otherwise break it into a
+# second column. LibreOffice ignores fo:wrap-option on a Writer cell, so the
+# room has to be left rather than the wrap forbidden.
 LINE_SLACK_EM = 1.0
 
 # 封面第一行的頂端與最後一行的底端，寫死，因為類別也是寫死的。
-# Where the cover's text starts and ends. \\makecover sets the cover inside a
-# 3 cm margin on a fixed A4 page and spreads it with \\vfill, so its first line
-# begins and its last line ends in the same two places in every thesis: these
-# are those places, measured off a build, and the spine is stretched between
-# them. A change to \\ntu@geometry@cover or to the cover's 18 pt on 27 pt body
-# is a change to these two numbers.
+# \makecover sets a fixed A4 page inside a 3 cm margin and spreads it with
+# \vfill, so the cover's first and last lines fall here in every thesis.
+# Changing \ntu@geometry@cover or the cover's 18/27 pt body changes these.
 COVER_TOP_PT = 83.9
 COVER_BOTTOM_PT = 748.2
 COVER_TEXT_HEIGHT_PT = COVER_BOTTOM_PT - COVER_TOP_PT
 
-# How close to the edge of the spine a character may set. The official 8 mm
-# sample leaves about 0.3 mm beside its widest line, the year; a quarter of a
-# millimetre is a shade tighter than that, so a spine as wide as the sample
-# still sets at the form's own sizes, and a narrower one shrinks rather than
-# running its characters off the fold.
+# How close to the fold a character may set. NTU's 8 mm sample leaves about
+# 0.3 mm beside its widest line, so a shade under that keeps the sample width
+# setting at the form's own sizes.
 SIDE_CLEARANCE_MM = 0.25
 
 
-# --------------------------------------------------------------------------
-# What the spine says
-# --------------------------------------------------------------------------
+# --- What the spine says ---------------------------------------------------
 #
 # main.tex and ntusetup.tex, read with the same parser the TDR filler uses.
 # The source rather than the built cover: \ntusetup holds one value per key,
@@ -260,13 +215,7 @@ class SpineText:
 
 
 def value(setup: dict[str, str], key: str) -> str:
-    """One \\ntusetup value, as the class would set it.
-
-    TeX turns any run of whitespace into a single space, so the spine reads a
-    wrapped source value the way the cover prints it. Composed, because a
-    vertical line gives every character a slot of its own and a decomposed
-    accent or kana mark would take a second one.
-    """
+    """One \ntusetup value, as the class would set it."""
     return unicodedata.normalize("NFC", collapse_spaces(setup.get(key, "")))
 
 
@@ -285,13 +234,7 @@ def roc_date(given: str) -> tuple[int, int]:
 
 
 def read_spine_text(root: Path) -> SpineText:
-    """Collect what the spine letters, in the thesis's own words.
-
-    The form gives the head two columns: the university in the right-hand one
-    and the institute in the left. \\ntusetup names them separately, and the
-    college it prints between them on the cover is on neither column of the
-    form, so nothing has to be taken apart to letter it.
-    """
+    """Collect what the spine letters, in the thesis's own words."""
     options = class_options(root / "main.tex")
     setup = parse_ntusetup(root / "ntusetup.tex")
     degree = DEGREE_NAMES.get(options.get("degree", "master"))
@@ -342,11 +285,7 @@ class FontFile:
 
 
 def font_names(font: FontFile) -> tuple[str, ...]:
-    """The family, full and PostScript names a face answers to.
-
-    Users drop their own files into fonts/ for fontset=template, so anything
-    that will not open as a font is simply not the font being looked for.
-    """
+    """The family, full and PostScript names a face answers to."""
     try:
         with font.open(lazy=True) as opened:
             table = opened["name"]
@@ -357,11 +296,7 @@ def font_names(font: FontFile) -> tuple[str, ...]:
 
 
 def installed_fonts() -> list[FontFile]:
-    """Every face fontconfig knows about, collections expanded.
-
-    A machine without fontconfig has nothing to answer with, which is not an
-    error: the shipped faces are found without it.
-    """
+    """Every face fontconfig knows about, collections expanded."""
     try:
         listed = subprocess.run(
             ["fc-list", "--format=%{file}\t%{index}\n"],
@@ -393,15 +328,7 @@ CJK_FAMILIES = {"system": "BiauKai", "overleaf": "AR PL KaitiM Big5"}
 
 
 def locate_font(options: dict[str, str], root: Path) -> FontFile:
-    """The file the class sets Chinese in, found the way the class finds it.
-
-    Two of the fontsets name a family and leave the machine to resolve it, so
-    fontconfig is asked for what it has rather than asked to match: it answers
-    a request for a face it does not have with a metric-compatible stand-in,
-    and a spine lettered in the stand-in would look nothing like the cover.
-    Each candidate is opened and made to say for itself that it is the face
-    asked for; a .ttc is several faces in one file, and only one is the answer.
-    """
+    """The file the class sets Chinese in, found the way the class finds it."""
     fontset = options.get("fontset", "default")
     if fontset in CJK_FAMILIES:
         family = CJK_FAMILIES[fontset]
@@ -425,31 +352,22 @@ def locate_font(options: dict[str, str], root: Path) -> FontFile:
     return FontFile(path)
 
 
-# The Chinese faces this template redistributes, named by the files they are.
-# One thing is true of these and of no others: their licences (政府資料開放授權
-# 條款-1.0 or OFL-1.1) permit a modified version, so a subset of them may be
-# written with its embedding rights relaxed and travel inside the ODT.
+# The faces this template redistributes. Their licences (政府資料開放授權條款-1.0,
+# OFL-1.1) permit a modified version, so a subset of these -- and of nothing
+# else -- may have its embedding rights relaxed to travel inside the ODT.
 SHIPPED_FILES = ("fonts/chinese/TW-Kai-98_1.ttf", "fonts/chinese/TW-Sung-98_1.ttf")
 
 
 def redistributed(font: FontFile, root: Path) -> bool:
-    """Whether a file is one of the two faces this repository ships.
-
-    The question a name cannot answer: what those licences cover is these
-    files, and one of the user's own that merely answers to their names is not
-    covered -- relabelling its embedding rights would hand out a permission
-    nobody gave. Only the fontsets that load a face by path can reach these,
-    so comparing the path is the whole test.
-    """
+    """Whether a file is one of the two faces this repository ships."""
     return any(
         font.path.resolve() == (root / relative).resolve() for relative in SHIPPED_FILES
     )
 
 
-# OS/2 fsType, the font's own statement of what may be embedded where.
-# The permission itself is the low four bits, and it is a level rather than a
-# set of flags: zero is installable, the most permissive of all. The bits above
-# it are separate restrictions and say nothing about that level.
+# OS/2 fsType. The permission is the low four bits and is a level, not a flag
+# set -- zero is installable, the most permissive. The bits above are separate
+# restrictions and say nothing about that level.
 FSTYPE_LEVEL = 0x000F
 FSTYPE_RESTRICTED = 0x0002  # embedding forbidden without the vendor's leave
 FSTYPE_EDITABLE = 0x0008  # embedding allowed in a document that can be edited
@@ -467,21 +385,7 @@ class Embedding:
 
 
 def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding:
-    """Cut the face down to the glyphs the spine prints, and say where it may go.
-
-    The shipped 全字庫 faces are tens of megabytes; a spine sets a few dozen
-    characters. Every name record is kept so that the family name in the ODT
-    still resolves to the embedded file.
-
-    Whether the ODT may carry the subset is the second answer. An ODT is a
-    document that can be edited, which `fsType` level 4 does not allow, and an
-    office suite honours only a face marked installable -- it substitutes
-    something else, silently, for one that is not. The template's own faces
-    may simply be marked installable, their licences permitting a modified
-    version; a face belonging to the user may not be relabelled on their
-    behalf, so the ODT names it and LibreOffice sets it from the copy this
-    machine has installed.
-    """
+    """Cut the face down to the glyphs the spine prints, and say where it may go."""
     with font.open(lazy=True) as probe:
         rights = probe["OS/2"].fsType
     level = rights & FSTYPE_LEVEL
@@ -544,9 +448,7 @@ def missing_characters(font: FontFile, characters: str) -> str:
     return "".join(char for char in characters if ord(char) not in table)
 
 
-# --------------------------------------------------------------------------
-# How wide the spine has to be
-# --------------------------------------------------------------------------
+# --- How wide the spine has to be ------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -594,28 +496,18 @@ def measure(pages: int, binding: Binding, measured_mm: float | None = None) -> T
     )
 
 
-# --------------------------------------------------------------------------
-# Placing the text
-# --------------------------------------------------------------------------
+# --- Placing the text ------------------------------------------------------
 #
-# Vertical CJK setting is not simply horizontal text turned on its side. Every
-# wide character keeps its upright shape and takes a slot one em deep, while a
-# run of Latin -- letters, digits, anything narrow -- turns a quarter turn and
-# runs down the column at its own width. Punctuation gets a different shape
-# again, which the font's own `vert` feature supplies.
+# Vertical CJK is not horizontal text turned on its side: a wide character
+# keeps its shape in a slot one em deep, a Latin run turns a quarter turn and
+# advances at its own width, and punctuation takes the shape `vert` gives it.
 
 
-# Which characters a vertical line stands upright and which it turns on its
-# side is the Vertical_Orientation property of UTR#50 (Unicode Vertical Text
-# Layout), and East Asian width is not a usable stand-in for it: × and ± stand
-# up where ° and → turn, though all four are ambiguous-width symbols. These
-# are the ranges that stand upright, from `VerticalOrientation-17.txt` at
-# <https://www.unicode.org/Public/vertical/revision-17/>, taking the U and Tu
-# values; Tr -- transformed, falling back to rotated -- where the character is
-# wide, since a CJK face gives those a vertical form and LibreOffice draws
-# that upright; and the wide letters added to Unicode since that file's
-# repertoire, which its default would otherwise turn. Sorted and merged, so
-# the lookup can bisect.
+# What stands upright is UTR#50's Vertical_Orientation, and East Asian width
+# cannot stand in for it: × and ± stand up where ° and → turn, though all four
+# are ambiguous-width. The U and Tu values of `VerticalOrientation-17.txt`
+# (<https://www.unicode.org/Public/vertical/revision-17/>), plus Tr where the
+# character is wide, plus the wide letters added since. Merged, so it bisects.
 UPRIGHT_RANGES = (
     (0x00A7, 0x00A7), (0x00A9, 0x00A9), (0x00AE, 0x00AE), (0x00B1, 0x00B1),
     (0x00BC, 0x00BE), (0x00D7, 0x00D7), (0x00F7, 0x00F7), (0x02EA, 0x02EB),
@@ -645,14 +537,7 @@ UPRIGHT_STARTS = tuple(start for start, _ in UPRIGHT_RANGES)
 
 
 def upright(character: str) -> bool:
-    """Whether a character stands up in a vertical line or turns on its side.
-
-    The Latin alphabet turns, and its accents turn with it, so a `Café` that
-    reaches us decomposed does not part company with its accent. CJK stands
-    up, and so do the marks a CJK line sets upright -- ×, ±, §, ※ -- while
-    the ones it does not, ° and the arrows and the relations among them,
-    turn with the run around them.
-    """
+    """Whether a character stands up in a vertical line or turns on its side."""
     place = bisect.bisect_right(UPRIGHT_STARTS, ord(character)) - 1
     return place >= 0 and ord(character) <= UPRIGHT_RANGES[place][1]
 
@@ -667,11 +552,7 @@ class Run:
 
 
 def split_runs(line: str, ruler: pymupdf.Font) -> tuple[Run, ...]:
-    """Break a line into upright characters and turned Latin runs.
-
-    Each upright character is its own run so that justification can open the
-    gaps between them, the way a vertical CJK line stretches.
-    """
+    """Break a line into upright characters and turned Latin runs."""
     runs: list[Run] = []
     for character in line:
         if upright(character):
@@ -725,12 +606,7 @@ class Block:
         return tuple(line.text for line in self.lines)
 
     def placed(self, index: int) -> list[tuple[Run, float]]:
-        """Every run of line `index` with the page offset of its slot's top.
-
-        A vertical line hands each run a slot as deep as its advance and hangs
-        the run from the top of it; justification widens the gaps between the
-        slots without changing what any of them holds.
-        """
+        """Every run of line `index` with the page offset of its slot's top."""
         if not self.vertical:
             return []
         line = self.lines[index]
@@ -748,21 +624,13 @@ class Block:
         return placement
 
     def centre_pt(self, index: int, width_pt: float) -> float:
-        """Where line `index` sits across the spine.
-
-        Vertical lines stack right to left, so the first line of a block is
-        its rightmost column.
-        """
+        """Where line `index` sits across the spine."""
         offset = (len(self.lines) - 1) / 2 - index
         return width_pt / 2 + offset * self.pitch_pt
 
     @property
     def ink_top_pt(self) -> float:
-        """The top of the block's first line box, leading excluded.
-
-        Measured the same way the cover is, so that aligning one against the
-        other compares like with like.
-        """
+        """The top of the block's first line box, leading excluded."""
         if not self.vertical:
             leading = self.pitch_pt - self.size_pt * self.extent
             return self.top_pt + (self.height_pt - len(self.lines) * self.pitch_pt + leading) / 2
@@ -784,12 +652,7 @@ class Block:
 
 
 def capped(name: str, *limits: float) -> float:
-    """The form's point size, or the largest tenth of a point that still fits.
-
-    Rounding a shrunk size down leaves a sliver of slack in the row, so that a
-    block sized to exactly its limit cannot spill into a second column on a
-    reader whose metrics round the other way.
-    """
+    """The form's point size, or the largest tenth of a point that still fits."""
     nominal = NOMINAL_SIZE_PT[name]
     limit = min(limits)
     if limit >= nominal:
@@ -805,12 +668,7 @@ def fit_size(
     height_pt: float,
     width_pt: float,
 ) -> tuple[float, float]:
-    """Return the point size and line pitch that keep a block inside its row.
-
-    The form's sizes suit the titles it was drawn with. A longer institute
-    name, a longer title or a narrower spine has to give, and it gives by
-    setting smaller rather than by running over the edge of the artwork.
-    """
+    """Return the point size and line pitch that keep a block inside its row."""
     across = width_pt - 2 * mm(SIDE_CLEARANCE_MM)
     deepest = max(line.advance for line in lines)
     if name == "date":
@@ -884,12 +742,7 @@ def build_rows(
 
 
 def block_room(block: Block) -> tuple[float, float]:
-    """A block's own row height, and how far its ink starts below that row's top.
-
-    A vertical block fills its row exactly, so its row is as deep as its ink.
-    The date stacks line boxes instead, and half a line's leading sits above
-    the first of them.
-    """
+    """A block's own row height, and how far its ink starts below that row's top."""
     if block.vertical:
         deep = max(line.advance for line in block.lines) * block.size_pt
         room = deep + LINE_SLACK_EM * block.size_pt
@@ -901,20 +754,7 @@ def block_room(block: Block) -> tuple[float, float]:
 
 
 def lay_out(text: SpineText, width_pt: float, ruler: pymupdf.Font) -> Spine:
-    """Lay the spine out, stretched to the same extent as the cover's text.
-
-    NTU's form is drawn for a generic cover. On a bound book the spine reads
-    better when its first character starts level with the cover's first line
-    and its last finishes level with the cover's last, so that the two faces
-    of the book agree.
-
-    What gives is the space, not the type. The degree, the title, the author
-    and the date keep the point sizes the format rules name, so their depth is
-    already settled; the gaps between them, and the depth the heading
-    justifies across, take up the difference in one proportion. The two ends
-    then land on the cover's by construction, and the table finishes where the
-    cover's last line does, so it always fits the sheet.
-    """
+    """Lay the spine out, stretched to the same extent as the cover's text."""
     form = build_rows(text, width_pt, ruler, form_heights())
     blocks = form.blocks
     settled = sum(block.ink_bottom_pt - block.ink_top_pt for block in blocks[1:])
@@ -961,24 +801,11 @@ def lay_out(text: SpineText, width_pt: float, ruler: pymupdf.Font) -> Spine:
     return build_rows(text, width_pt, ruler, heights)
 
 
-# --------------------------------------------------------------------------
-# The PDF
-# --------------------------------------------------------------------------
+# --- The PDF ---------------------------------------------------------------
 
 
 def vertical_forms(font: FontFile, characters: str) -> dict[str, str]:
-    """The glyph a vertical line draws each character with, named.
-
-    Vertical CJK does not merely turn the page: a bracket, a comma or a full
-    stop takes a different shape down a column, and which shape lives in the
-    font rather than at a code point of its own. HarfBuzz is asked for it --
-    the shaper an office suite lays the ODT out with -- rather than the
-    font's feature tables being read here and applied by guesswork.
-
-    Only what stands upright is asked about: a turned run is drawn from the
-    horizontal form and rotated, so a vertical form folded into one of those
-    would be turned twice.
-    """
+    """The glyph a vertical line draws each character with, named."""
     face = hb.Face(hb.Blob.from_file_path(str(font.path)), font.index)
     shaper = hb.Font(face)
     with font.open(lazy=True) as opened:
@@ -1003,20 +830,7 @@ def vertical_forms(font: FontFile, characters: str) -> dict[str, str]:
 
 
 def drawn_face(font_bytes: bytes, forms: dict[str, str]) -> bytes:
-    """The copy of the face the PDF draws from, with two corrections.
-
-    The first is the vertical forms. A PDF carries glyphs already chosen, so
-    folding the shaper's choice into this copy's character map is what puts
-    the vertical shapes on the page. The mapping back to Unicode is
-    untouched, so the PDF still reads as what it says.
-
-    The second is `post.isFixedPitch`. 標楷體 sets it, though its ideographs
-    are a full em wide and its digits half of one, and a PDF writer that
-    believes it emits a single width for every glyph -- which sets the year on
-    the spine as three digits piled on top of each other. Clearing the flag
-    costs a font that really is monospaced nothing: its widths are then simply
-    written out, and they all still agree.
-    """
+    """The copy of the face the PDF draws from, with two corrections."""
     face = TTFont(io.BytesIO(font_bytes))
     kept = set(face.getGlyphOrder())
     turned = 0
@@ -1047,13 +861,7 @@ def write_pdf(
     target: Path,
     subsettable: bool = True,
 ) -> None:
-    """Draw the spine, run by run, where the layout puts it.
-
-    Upright characters are centred in their column, each on the glyph the
-    shaper chose for a vertical line. A turned run is drawn horizontally and
-    rotated a quarter turn clockwise about its own start, which is how a
-    vertical line sets Latin.
-    """
+    """Draw the spine, run by run, where the layout puts it."""
     with pymupdf.open() as document:
         page = document.new_page(width=spine.width_pt, height=PAGE_HEIGHT_PT)
         upright_text = pymupdf.TextWriter(page.rect)
@@ -1117,23 +925,14 @@ def draw_turned(
     font: pymupdf.Font,
     page: pymupdf.Page,
 ) -> tuple[pymupdf.TextWriter, pymupdf.Point]:
-    """Queue one Latin run, laid out horizontally for a quarter turn clockwise.
-
-    Rotating about the pivot carries the run down its column, so it is written
-    left to right from there and the rotation does the rest. A quarter turn
-    clockwise puts what was above the baseline to the right of it, so the
-    baseline sits left of the column's centre line by as much as the face
-    leaves above it, less half an em.
-    """
+    """Queue one Latin run, laid out horizontally for a quarter turn clockwise."""
     pivot = pymupdf.Point(centre - block.size_pt * (font.ascender - 0.5), offset)
     writer = pymupdf.TextWriter(page.rect)
     writer.append(pivot, run.text, font=font, fontsize=block.size_pt)
     return writer, pivot
 
 
-# --------------------------------------------------------------------------
-# The ODT
-# --------------------------------------------------------------------------
+# --- The ODT ---------------------------------------------------------------
 
 ODF_NAMESPACES = " ".join(
     f'xmlns:{prefix}="{uri}"'
@@ -1155,11 +954,7 @@ def pt(value: float) -> str:
 
 
 def millimetres(value_pt: float) -> str:
-    """Widths in the unit a bindery quotes, so no rounding creeps in.
-
-    A spine given in whole millimetres survives as one; expressed in points it
-    comes back a hundredth of a millimetre short.
-    """
+    """Widths in the unit a bindery quotes, so no rounding creeps in."""
     return f"{value_pt * MM_PER_IN / PT_PER_IN:.4f}mm"
 
 
@@ -1178,12 +973,7 @@ def sfnt_flavour(face: bytes) -> tuple[str, str, str]:
 
 
 def font_declaration(family: str, embedded: str | None, flavour: str = "truetype") -> str:
-    """Declare the face, pointing at the copy inside the ODT when there is one.
-
-    Both content.xml and styles.xml carry this; a reader consults whichever it
-    reaches first. Without an embedded copy the declaration is just a name,
-    and the reader's own machine supplies the face.
-    """
+    """Declare the face, pointing at the copy inside the ODT when there is one."""
     source = (
         f"<svg:font-face-src><svg:font-face-uri xlink:href={quoteattr(embedded)} "
         'xlink:type="simple" loext:font-style="normal" loext:font-weight="normal">'
@@ -1201,11 +991,7 @@ def font_declaration(family: str, embedded: str | None, flavour: str = "truetype
 
 
 def text_properties(family: str, size_pt: float) -> str:
-    """Set one size in one family, for Western, Asian and complex scripts alike.
-
-    The spine is Chinese throughout, including the ROC year and month, which
-    the form also sets in the Chinese face rather than in a Western one.
-    """
+    """Set one size in one family, for Western, Asian and complex scripts alike."""
     name, size = quoteattr(family), quoteattr(pt(size_pt))
     return (
         f"<style:text-properties style:font-name={name} fo:font-family={name} "
@@ -1342,12 +1128,7 @@ def styles_xml(width_pt: float, family: str, font_path: str | None, flavour: str
 
 
 def meta_xml(metadata: dict[str, str]) -> str:
-    """What the document says about itself, and what the PDF inherits.
-
-    The exported PDF takes its author from meta:initial-creator and its
-    keywords from meta:keyword, one element each; dc:description is the
-    document's comments and goes nowhere near them.
-    """
+    """What the document says about itself, and what the PDF inherits."""
     keywords = "".join(
         f"<meta:keyword>{escape(keyword)}</meta:keyword>"
         for keyword in metadata["keywords"].split("; ")
@@ -1431,9 +1212,7 @@ def write_odt(
     logging.info("Wrote %s", target)
 
 
-# --------------------------------------------------------------------------
-# Driving the two bindings
-# --------------------------------------------------------------------------
+# --- Driving the two bindings ----------------------------------------------
 
 
 def spine_metadata(text: SpineText, binding: Binding, thickness: Thickness) -> dict[str, str]:
