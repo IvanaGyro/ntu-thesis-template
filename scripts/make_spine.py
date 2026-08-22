@@ -376,7 +376,14 @@ def split_heading(heading: str, root: Path) -> tuple[str, str]:
     )
 
 
-WORD = re.compile(r"[A-Za-z0-9]")
+def word_character(character: str) -> bool:
+    """Whether a character is part of a word a space would have separated.
+
+    Any letter or digit that a vertical line turns on its side: `é` is one as
+    much as `e` is, while a CJK character is not, since nothing was elided
+    when its line broke.
+    """
+    return character.isalnum() and not upright(character)
 
 
 def join_wrapped(lines: list[str]) -> str:
@@ -388,7 +395,7 @@ def join_wrapped(lines: list[str]) -> str:
     """
     joined = ""
     for line in lines:
-        if joined and WORD.match(joined[-1]) and WORD.match(line[0]):
+        if joined and word_character(joined[-1]) and word_character(line[0]):
             joined += " "
         joined += line
     return joined
@@ -443,13 +450,23 @@ def read_spine_text(cover: Cover, root: Path) -> SpineText:
             "then in English, between its degree and its advisor, so the spine "
             "cannot read it."
         )
-    # What is left once the author and the English title are taken off the end
-    # is the Chinese title, however many lines and languages it runs to.
-    written = [line for run in runs[:-3] for line in run]
-    if not written:
+    # The Chinese title is the run the English one follows. Taking everything
+    # up to the author instead would swallow the English title whenever it
+    # wraps around a Chinese quotation of its own, so only the first run is
+    # read -- and if further Chinese runs sit between it and the author, no
+    # rule can say which title they belong to, so the run says so.
+    written = runs[0]
+    if not written[0].chinese:
         raise CollectionError(
             "The cover prints no Chinese title above its English one, so the "
             "spine has nothing to letter."
+        )
+    if len(runs) > 4:
+        logging.warning(
+            "The cover's title and its English twin do not read as one Chinese "
+            "block followed by one English one, so the spine letters only "
+            "%r. Check it against the cover.",
+            collapse_spaces(join_wrapped([line.text for line in written])),
         )
     printed = [found for found in (COVER_DATE.search(line.text) for line in lines) if found]
     if not printed:
@@ -1059,7 +1076,8 @@ def block_room(block: Block) -> tuple[float, float]:
         # A justified line starts at the top of its row; a centred one sits in
         # the middle of it, so half the slack is above the ink.
         return room, 0.0 if block.justified else (room - deep) / 2
-    return len(block.lines) * block.pitch_pt, (block.pitch_pt - block.size_pt) / 2
+    leading = block.pitch_pt - block.size_pt * block.extent
+    return len(block.lines) * block.pitch_pt, leading / 2
 
 
 def lay_out(
