@@ -1202,7 +1202,21 @@ def millimetres(value_pt: float) -> str:
     return f"{value_pt * MM_PER_IN / PT_PER_IN:.4f}mm"
 
 
-def font_declaration(family: str, embedded: str | None) -> str:
+# The first four bytes of an sfnt say which outlines it carries: OTTO for the
+# CFF ones, a version number for the TrueType ones. The ODT has to say which
+# it is in three places, and a reader may refuse a face that does not match
+# the label -- falling back, silently, to something else on the machine.
+SFNT_CFF = b"OTTO"
+
+
+def sfnt_flavour(face: bytes) -> tuple[str, str, str]:
+    """The file extension, ODF format hint and media type a face should carry."""
+    if face[:4] == SFNT_CFF:
+        return ".otf", "opentype", "application/x-font-otf"
+    return ".ttf", "truetype", "application/x-font-ttf"
+
+
+def font_declaration(family: str, embedded: str | None, flavour: str = "truetype") -> str:
     """Declare the face, pointing at the copy inside the ODT when there is one.
 
     Both content.xml and styles.xml carry this; a reader consults whichever it
@@ -1212,7 +1226,7 @@ def font_declaration(family: str, embedded: str | None) -> str:
     source = (
         f"<svg:font-face-src><svg:font-face-uri xlink:href={quoteattr(embedded)} "
         'xlink:type="simple" loext:font-style="normal" loext:font-weight="normal">'
-        '<svg:font-face-format svg:string="truetype"/>'
+        f"<svg:font-face-format svg:string={quoteattr(flavour)}/>"
         "</svg:font-face-uri></svg:font-face-src>"
         if embedded
         else ""
@@ -1321,11 +1335,11 @@ def table_rows(spine: Spine) -> str:
     return "".join(rows)
 
 
-def content_xml(spine: Spine, family: str, font_path: str | None) -> str:
+def content_xml(spine: Spine, family: str, font_path: str | None, flavour: str) -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<office:document-content {ODF_NAMESPACES} office:version="1.3">'
-        f"{font_declaration(family, font_path)}"
+        f"{font_declaration(family, font_path, flavour)}"
         f"{automatic_styles(spine, family)}"
         "<office:body><office:text>"
         '<table:table table:name="Spine" table:style-name="Spine">'
@@ -1336,12 +1350,12 @@ def content_xml(spine: Spine, family: str, font_path: str | None) -> str:
     )
 
 
-def styles_xml(width_pt: float, family: str, font_path: str | None) -> str:
+def styles_xml(width_pt: float, family: str, font_path: str | None, flavour: str) -> str:
     """The page itself: as tall as the thesis, as wide as the spine, no margins."""
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<office:document-styles {ODF_NAMESPACES} office:version="1.3">'
-        f"{font_declaration(family, font_path)}"
+        f"{font_declaration(family, font_path, flavour)}"
         "<office:styles>"
         '<style:style style:name="Standard" style:family="paragraph" style:class="text">'
         '<style:paragraph-properties fo:margin-top="0pt" fo:margin-bottom="0pt" '
@@ -1389,7 +1403,7 @@ def settings_xml() -> str:
     )
 
 
-def manifest_xml(font_path: str | None) -> str:
+def manifest_xml(font_path: str | None, media_type: str = "application/x-font-ttf") -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" '
@@ -1402,7 +1416,7 @@ def manifest_xml(font_path: str | None) -> str:
         '<manifest:file-entry manifest:full-path="settings.xml" manifest:media-type="text/xml"/>'
         + (
             f"<manifest:file-entry manifest:full-path={quoteattr(font_path)} "
-            'manifest:media-type="application/x-font-ttf"/>'
+            f"manifest:media-type={quoteattr(media_type)}/>"
             if font_path
             else ""
         )
@@ -1418,7 +1432,9 @@ def write_odt(
     target: Path,
 ) -> None:
     """Write the ODT, carrying the face when its rights allow and naming it when not."""
-    font_path = f"Fonts/{re.sub(r'[^A-Za-z0-9._-]', '-', family)}.ttf" if font_bytes else None
+    extension, flavour, media_type = sfnt_flavour(font_bytes or b"")
+    stem = re.sub(r"[^A-Za-z0-9._-]", "-", family)
+    font_path = f"Fonts/{stem}{extension}" if font_bytes else None
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
         # The mimetype has to come first and unstored, so that a reader can
         # identify the file from its first bytes without inflating anything.
@@ -1427,9 +1443,9 @@ def write_odt(
             "application/vnd.oasis.opendocument.text",
             compress_type=zipfile.ZIP_STORED,
         )
-        archive.writestr("META-INF/manifest.xml", manifest_xml(font_path))
-        archive.writestr("content.xml", content_xml(spine, family, font_path))
-        archive.writestr("styles.xml", styles_xml(spine.width_pt, family, font_path))
+        archive.writestr("META-INF/manifest.xml", manifest_xml(font_path, media_type))
+        archive.writestr("content.xml", content_xml(spine, family, font_path, flavour))
+        archive.writestr("styles.xml", styles_xml(spine.width_pt, family, font_path, flavour))
         archive.writestr("meta.xml", meta_xml(metadata))
         archive.writestr("settings.xml", settings_xml())
         if font_path:
