@@ -29,6 +29,7 @@ never calls it.
 from __future__ import annotations
 
 import argparse
+import bisect
 import io
 import itertools
 import logging
@@ -394,21 +395,33 @@ def split_heading(heading: str, root: Path) -> tuple[str, str]:
     )
 
 
-# What hyphenation prints at the break, in place of the space it did not
-# break at. The dashes a line may also break after are ambiguous-width
-# punctuation, which a vertical line stands upright anyway.
-BREAK_HYPHEN = "-"
+# Printed at the break itself, in place of the space it did not break at.
+# Only the hyphens: TeX breaks a line at glue or at a discretionary, and it is
+# hyphenation and an explicit hyphen that leave one of these behind. A dash is
+# neither, so a Latin line that ends in one ended at the space after it --
+# while a CJK line, which may break beside its own 破折號, is settled by the
+# character on the other side.
+BREAK_MARKS = "-\u2010\u00ad"
 
 
-def sideways(character: str) -> bool:
-    """Whether a character belongs to a run a vertical line turns on its side.
+def unspaced(character: str) -> bool:
+    """Whether a line may break beside this character without eliding a space.
 
-    Latin text and the punctuation set with it alike: `é` and `Ω` turn as
-    much as `e` does, and so do the comma and the colon that end a word.
-    What the line stands upright is CJK, which breaks between any two
-    characters and elides nothing when it does.
+    CJK sets one character straight after another, so a break inside it takes
+    nothing away. Everything else is set with spaces between its words --
+    the Latin alphabet, the punctuation that ends them, and the symbols a
+    vertical line stands upright though a Latin one does not, ° and × among
+    them, which is why this is not the same question as which way a character
+    faces.
     """
-    return not character.isspace() and not upright(character)
+    return unicodedata.east_asian_width(character) in ("W", "F") or ord(character) >= CJK_FIRST
+
+
+def elided_space(before: str, after: str) -> bool:
+    """Whether the break between these two characters took a space with it."""
+    if before in BREAK_MARKS or before.isspace() or after.isspace():
+        return False
+    return not unspaced(before) and not unspaced(after)
 
 
 def join_wrapped(lines: list[str]) -> str:
@@ -416,16 +429,16 @@ def join_wrapped(lines: list[str]) -> str:
 
     A Chinese line simply resumes, so the halves are butted together. A line
     broken inside horizontal text was broken at a space, and putting the
-    halves back without one runs two words into one: the break falls at the
-    space beside punctuation as readily as between two letters, which makes
-    `COVID-19:` and `Methods` as much a pair as `Café` and `Society`. The
-    exception is a trailing hyphen, which stands in for the break rather than
-    for a space.
+    halves back without one runs two words into one -- `COVID-19:` and
+    `Methods`, or `30` and `°C`, as much as `Café` and `Society`, since the
+    break falls at the space beside punctuation and beside a symbol as
+    readily as between two letters. What was elided is a space only where
+    both sides are set with spaces; a boundary with CJK on either side of it
+    resumes, and a dash prints the break instead of standing in for a space.
     """
     joined = ""
     for line in lines:
-        printed_break = joined[-1:] == BREAK_HYPHEN
-        if joined and not printed_break and sideways(joined[-1]) and sideways(line[0]):
+        if joined and elided_space(joined[-1], line[0]):
             joined += " "
         joined += line
     return joined
@@ -852,8 +865,10 @@ def drawn_face(font_bytes: bytes, vertical: str) -> bytes:
     The first is the vertical forms. LibreOffice applies `vert` itself when it
     sets the ODT, but a PDF carries glyphs already chosen, so folding the
     substitution into this copy's character map is what makes the drawn page
-    agree with the editable one. The mapping back to Unicode is untouched, so
-    the PDF still reads as what it says.
+    agree with the editable one. Only the upright characters take it: what a
+    line turns on its side is drawn from the horizontal form and rotated.
+    The mapping back to Unicode is untouched, so the PDF still reads as what
+    it says.
 
     The second is `post.isFixedPitch`. 標楷體 sets it, though its ideographs
     are a full em wide and its digits half of one, and a PDF writer that
@@ -864,7 +879,11 @@ def drawn_face(font_bytes: bytes, vertical: str) -> bytes:
     """
     face = TTFont(io.BytesIO(font_bytes))
     mapping = vertical_substitutions(face)
-    wanted = {ord(character) for character in vertical}
+    # Only the characters that stand up: a turned run is drawn from the
+    # horizontal form and rotated, the way LibreOffice sets it, so folding a
+    # vertical form into one of those would turn it twice. The date is drawn
+    # across from this same copy, and shares its characters with the title.
+    wanted = {ord(character) for character in vertical if upright(character)}
     turned = 0
     for table in face["cmap"].tables:
         for code, name in list(table.cmap.items()):
@@ -956,21 +975,56 @@ def measure(
 # again, which the font's own `vert` feature supplies.
 
 
+# Which characters a vertical line stands upright and which it turns on its
+# side is the Vertical_Orientation property of UTR#50 (Unicode Vertical Text
+# Layout), and East Asian width is not a usable stand-in for it: × and ± stand
+# up where ° and → turn, though all four are ambiguous-width symbols. These
+# are the ranges that stand upright, from `VerticalOrientation-17.txt` at
+# <https://www.unicode.org/Public/vertical/revision-17/>, taking the U and Tu
+# values; Tr -- transformed, falling back to rotated -- where the character is
+# wide, since a CJK face gives those a vertical form and LibreOffice draws
+# that upright; and the wide letters added to Unicode since that file's
+# repertoire, which its default would otherwise turn. Sorted and merged, so
+# the lookup can bisect.
+UPRIGHT_RANGES = (
+    (0x00A7, 0x00A7), (0x00A9, 0x00A9), (0x00AE, 0x00AE), (0x00B1, 0x00B1),
+    (0x00BC, 0x00BE), (0x00D7, 0x00D7), (0x00F7, 0x00F7), (0x02EA, 0x02EB),
+    (0x1100, 0x11FF), (0x1401, 0x167F), (0x18B0, 0x18FF), (0x2016, 0x2016),
+    (0x2020, 0x2021), (0x2030, 0x2031), (0x203B, 0x203C), (0x2042, 0x2042),
+    (0x2047, 0x2049), (0x2051, 0x2051), (0x2065, 0x2065), (0x20DD, 0x20E0),
+    (0x20E2, 0x20E4), (0x2100, 0x2101), (0x2103, 0x2109), (0x210F, 0x210F),
+    (0x2113, 0x2114), (0x2116, 0x2117), (0x211E, 0x2123), (0x2125, 0x2125),
+    (0x2127, 0x2127), (0x2129, 0x2129), (0x212E, 0x212E), (0x2135, 0x213F),
+    (0x2145, 0x214A), (0x214C, 0x214D), (0x214F, 0x2189), (0x218C, 0x218F),
+    (0x221E, 0x221E), (0x2234, 0x2235), (0x2300, 0x2307), (0x230C, 0x231F),
+    (0x2324, 0x232B), (0x237D, 0x239A), (0x23BE, 0x23CD), (0x23CF, 0x23CF),
+    (0x23D1, 0x23DB), (0x23E2, 0x2422), (0x2424, 0x24FF), (0x25A0, 0x2619),
+    (0x2620, 0x2767), (0x2776, 0x2793), (0x2B12, 0x2B2F), (0x2B50, 0x2B59),
+    (0x2BB8, 0x2BEB), (0x2BF0, 0x2BFF), (0x2E80, 0xA4CF), (0xA960, 0xA97F),
+    (0xAC00, 0xD7FF), (0xE000, 0xFAFF), (0xFE10, 0xFE1F), (0xFE30, 0xFE48),
+    (0xFE50, 0xFE57), (0xFE59, 0xFE62), (0xFE67, 0xFE6F), (0xFF01, 0xFF0C),
+    (0xFF0E, 0xFF1B), (0xFF1F, 0xFF60), (0xFFE0, 0xFFE7), (0xFFF0, 0xFFF8),
+    (0xFFFC, 0xFFFD), (0x10980, 0x1099F), (0x11580, 0x115FF), (0x13000, 0x1342F),
+    (0x14400, 0x1467F), (0x16FE0, 0x18CD5), (0x18D00, 0x18D08), (0x1B000, 0x1B122),
+    (0x1B132, 0x1B132), (0x1B150, 0x1B152), (0x1B155, 0x1B155), (0x1B164, 0x1B167),
+    (0x1B170, 0x1B2FB), (0x1D000, 0x1D1FF), (0x1D300, 0x1D37F), (0x1D800, 0x1DAAF),
+    (0x1F000, 0x1F7FF), (0x1F900, 0x1F9FF), (0x20000, 0x2FFFD), (0x30000, 0x3FFFD),
+    (0xF0000, 0xFFFFD), (0x100000, 0x10FFFD),
+)
+UPRIGHT_STARTS = tuple(start for start, _ in UPRIGHT_RANGES)
+
+
 def upright(character: str) -> bool:
     """Whether a character stands up in a vertical line or turns on its side.
 
-    East Asian width very nearly draws this line: wide and full-width stand
-    up, narrow turns. The ambiguous class needs a second look, because it
-    holds both marks a CJK line sets upright (×, °) and the accented letters
-    of European alphabets -- and turning `Caf` while standing `é` up would
-    break one word into two orientations.
+    The Latin alphabet turns, and its accents turn with it, so a `Café` that
+    reaches us decomposed does not part company with its accent. CJK stands
+    up, and so do the marks a CJK line sets upright -- ×, ±, §, ※ -- while
+    the ones it does not, ° and the arrows and the relations among them,
+    turn with the run around them.
     """
-    width = unicodedata.east_asian_width(character)
-    if width in ("W", "F"):
-        return True
-    if width != "A":
-        return False
-    return not (ord(character) < CJK_FIRST and unicodedata.category(character)[0] in "LM")
+    place = bisect.bisect_right(UPRIGHT_STARTS, ord(character)) - 1
+    return place >= 0 and ord(character) <= UPRIGHT_RANGES[place][1]
 
 
 @dataclass(frozen=True)

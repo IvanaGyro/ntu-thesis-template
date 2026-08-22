@@ -181,10 +181,23 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - Every page of `main.pdf` is an interior sheet, page one included: the card
   cover is printed from `pixi run cover`, which reproduces page one rather
   than replacing it. `PAPERBACK_BINDING_MM` pays for that card on top.
-- East Asian width alone does not decide orientation: the ambiguous class
-  holds both marks a CJK line sets upright (×, °) and the accented letters of
-  European alphabets, so `upright` sends ambiguous *letters* the way of the
-  Latin run around them and keeps ambiguous symbols standing.
+- Which characters a vertical line stands upright is UTR#50's
+  Vertical_Orientation, and East Asian width is not a usable stand-in for it:
+  × ± § ※ stand up while ° → ≤ ∑ — turn, though all of them are
+  ambiguous-width symbols, and LibreOffice lays the ODT out by the property
+  rather than the width. `UPRIGHT_RANGES` carries it — the U and Tu values of
+  `VerticalOrientation-17.txt`, plus Tr where the character is wide, since a
+  CJK face gives those a vertical form and LibreOffice draws that upright,
+  plus the wide letters added to Unicode since that file's repertoire. The
+  table was checked character by character against what LibreOffice actually
+  draws, which is also how the width heuristic it replaced was found to be
+  wrong for 37 of 84 symbols — the `°` of `30 °C` among them, worth 2 mm on
+  the page.
+- The vertical forms folded into the PDF's copy of the face are only for the
+  characters that stand upright. A turned run is drawn from the horizontal
+  form and rotated, so giving one of those a vertical form turns it twice —
+  and the date is drawn across from that same copy, sharing its characters
+  with the title.
 - The spine reads every word off page one of `main.pdf`, not out of
   `ntusetup.tex`: the class has already typeset it, so no LaTeX is left to
   misread and the spine cannot drift from the cover it is bound with. The

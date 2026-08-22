@@ -281,8 +281,9 @@ happened.
 
 The PDF is drawn rather than converted, so the ODT and the PDF agree without
 an office suite in the toolchain: with the 全字庫 faces the template ships,
-opening the ODT in LibreOffice puts every character within 0.12 mm of where
-the PDF has it. Other faces are laid out identically and print identically
+opening the ODT in LibreOffice puts every character within 0.35 mm of where
+the PDF has it, and within 0.1 mm on a title set in Chinese alone -- the
+difference being how LibreOffice spaces a Latin word inside a vertical line. Other faces are laid out identically and print identically
 from the PDF, but LibreOffice sets some of them -- 標楷體 among them -- about
 one ascent higher on the page, and the run says so. **Print the PDF**; the ODT
 is there to be edited.
