@@ -1729,6 +1729,11 @@ def main() -> int:
     if args.paper_thickness <= 0 or args.binding_allowance < 0:
         logging.error("Paper thickness must be positive and the binding allowance non-negative.")
         return 1
+    if args.paperback_width is not None and args.paperback_width <= 0:
+        # A hardcover adds its boards to whatever this says, so a negative
+        # measurement would come out the other side looking like a real width.
+        logging.error("--paperback-width must be positive.")
+        return 1
     args.output_dir.mkdir(parents=True, exist_ok=True)
     try:
         build(args)
