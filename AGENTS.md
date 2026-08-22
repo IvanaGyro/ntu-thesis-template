@@ -197,12 +197,28 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   the English one. The title is the *first* such run and no more — an English
   title that wraps around a Chinese quotation would otherwise be swallowed
   into it — and a cover whose two titles do not read as one Chinese block
-  then one English block is warned about rather than guessed at. The heading wraps too — 公共衛生學院's own
-  衛生福利部暨國立臺灣大學傳染病防治研究及教育中心 does not fit one line at
-  18 pt — so it is rejoined before `split_heading` sees it. Every rejoin puts
-  a space in only where the break fell between two Latin words, a word
-  character being any letter or digit a vertical line turns on its side,
-  `é` as much as `e`.
+  then one English block is warned about rather than guessed at. The heading
+  wraps too — 公共衛生學院's own 衛生福利部暨國立臺灣大學傳染病防治研究及教育中心
+  does not fit one line at 18 pt — so it is rejoined before `split_heading`
+  sees it. A rejoin puts a
+  space back wherever the break fell inside horizontal text — between two
+  characters a vertical line turns on its side, `é` and `Ω` and the comma and
+  the colon alike, since the break falls at the space beside punctuation as
+  readily as between two letters. CJK breaks anywhere and elides nothing, so
+  those halves are butted together; a trailing hyphen stands in for the break
+  rather than for a space, so it is butted together too.
+- The file the spine is lettered from is the one the cover was set from, not
+  merely one answering to the same name: an older revision left beside the
+  current one, or an installed face carrying a shipped face's names, would
+  otherwise supply outlines, metrics and embedding rights the thesis was
+  never set in, and every name would still agree. The PDF's own copy settles
+  it. That copy is subset and carries no cmap, so nothing in it can be looked
+  up by character; what subsetting leaves alone is the face's account of
+  itself — the em, the revision, the day it was made, and the unique
+  identifier and version in its name table — and only the marks both sides
+  carry are compared, a record the subsetter dropped being no evidence of a
+  different face. A build whose face is nowhere on the machine is lettered
+  from the nearest namesake with a warning, never silently.
 - The cover prints the university, the college and the institute as one line
   and the spine sets only the first and the last, so `split_heading` looks the
   college up in `ntu-academic-units.tex` and falls back to the 大學/學院

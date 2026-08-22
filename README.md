@@ -265,7 +265,11 @@ Both files carry a subset of the very face `main.pdf` sets Chinese in --
 whichever `fontset` and `cjkfont` in `main.tex` selected, found among the
 shipped fonts or among the ones installed on this machine, by the PostScript
 name the PDF records (標楷體 comes through as `DFKaiShu-SB-Estd-BF`, and a
-`.ttc` collection by the index of the face inside it).
+`.ttc` collection by the index of the face inside it). Where two files answer
+to that name -- an older revision left beside the current one, say -- the copy
+inside `main.pdf` says which of them the thesis was actually set from, and
+that is the one used. If none of them is that copy, the run says so before it
+letters anything.
 
 A face that forbids embedding is refused outright. One marked print-only is
 carried by the PDF, which is what that permission covers; an ODT is a document

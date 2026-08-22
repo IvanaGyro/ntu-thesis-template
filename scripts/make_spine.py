@@ -39,6 +39,7 @@ import subprocess
 import sys
 import unicodedata
 import zipfile
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
@@ -285,6 +286,7 @@ class Cover:
     """What the built thesis's cover tells the spine."""
 
     font: str
+    face: bytes  # the PDF's own copy of that font, to tell one revision from another
     width_pt: float
     height_pt: float
     lines: tuple[CoverLine, ...]
@@ -345,10 +347,26 @@ def read_cover(document: pymupdf.Document) -> Cover:
         )
     return Cover(
         font=font,
+        face=embedded_face(document, page, font),
         width_pt=page.rect.width,
         height_pt=page.rect.height,
         lines=tuple(sorted(lines, key=lambda line: line.top_pt)),
     )
+
+
+def embedded_face(document: pymupdf.Document, page: pymupdf.Page, name: str) -> bytes:
+    """The copy of a face the PDF carries, cut down to what the cover set in it.
+
+    A page refers to its fonts by the name the producer gave them, with the
+    subset tag in front and sometimes the encoding behind; the object itself
+    is what says which file the face came out of.
+    """
+    for xref, _, _, basename, *_ in page.get_fonts(full=True):
+        bare = re.sub(r"^[A-Z]{6}\+", "", basename)
+        if bare == name or bare.startswith(f"{name}-"):
+            return document.extract_font(xref)[3]
+    logging.debug("The built PDF keeps no copy of %s to compare against.", name)
+    return b""
 
 
 def split_heading(heading: str, root: Path) -> tuple[str, str]:
@@ -376,26 +394,38 @@ def split_heading(heading: str, root: Path) -> tuple[str, str]:
     )
 
 
-def word_character(character: str) -> bool:
-    """Whether a character is part of a word a space would have separated.
+# What hyphenation prints at the break, in place of the space it did not
+# break at. The dashes a line may also break after are ambiguous-width
+# punctuation, which a vertical line stands upright anyway.
+BREAK_HYPHEN = "-"
 
-    Any letter or digit that a vertical line turns on its side: `é` is one as
-    much as `e` is, while a CJK character is not, since nothing was elided
-    when its line broke.
+
+def sideways(character: str) -> bool:
+    """Whether a character belongs to a run a vertical line turns on its side.
+
+    Latin text and the punctuation set with it alike: `é` and `Ω` turn as
+    much as `e` does, and so do the comma and the colon that end a word.
+    What the line stands upright is CJK, which breaks between any two
+    characters and elides nothing when it does.
     """
-    return character.isalnum() and not upright(character)
+    return not character.isspace() and not upright(character)
 
 
 def join_wrapped(lines: list[str]) -> str:
     """Put a line the cover broke back together.
 
-    A Chinese line simply resumes, so the halves are butted together; a line
-    broken between two Latin words was broken at a space, and putting them
-    back without one would make a single word of the two.
+    A Chinese line simply resumes, so the halves are butted together. A line
+    broken inside horizontal text was broken at a space, and putting the
+    halves back without one runs two words into one: the break falls at the
+    space beside punctuation as readily as between two letters, which makes
+    `COVID-19:` and `Methods` as much a pair as `Café` and `Society`. The
+    exception is a trailing hyphen, which stands in for the break rather than
+    for a space.
     """
     joined = ""
     for line in lines:
-        if joined and word_character(joined[-1]) and word_character(line[0]):
+        printed_break = joined[-1:] == BREAK_HYPHEN
+        if joined and not printed_break and sideways(joined[-1]) and sideways(line[0]):
             joined += " "
         joined += line
     return joined
@@ -531,12 +561,20 @@ def font_names(font: FontFile) -> tuple[str, ...]:
 
 
 def installed_fonts() -> list[FontFile]:
-    """Every face fontconfig knows about, collections expanded."""
-    listed = subprocess.run(
-        ["fc-list", "--format=%{file}\t%{index}\n"],
-        capture_output=True,
-        text=True,
-    )
+    """Every face fontconfig knows about, collections expanded.
+
+    A machine without fontconfig has nothing to answer with, which is not an
+    error: the shipped faces are found without it.
+    """
+    try:
+        listed = subprocess.run(
+            ["fc-list", "--format=%{file}\t%{index}\n"],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        logging.debug("No fc-list on this machine, so only the shipped faces are known.")
+        return []
     if listed.returncode != 0:
         return []
     found = []
@@ -547,8 +585,74 @@ def installed_fonts() -> list[FontFile]:
     return found
 
 
-def locate_font(name: str, root: Path) -> FontFile:
-    """Find the face behind a PDF font name: shipped with the template, or installed.
+def font_files(root: Path) -> Iterator[FontFile]:
+    """Every face the spine could be lettered from: shipped first, then installed.
+
+    fontconfig is asked only once the shipped faces are exhausted, so a
+    machine with no fc-list on it can still write a spine in one of them.
+    """
+    for path in sorted(root.glob("fonts/**/*")):
+        if path.suffix.lower() in (".ttf", ".otf", ".ttc"):
+            for index in range(collection_size(path)):
+                yield FontFile(path, index)
+    yield from installed_fonts()
+
+
+def face_marks(font: TTFont) -> dict[str, object]:
+    """What tells one revision of a face from another.
+
+    A PDF carries its fonts cut down to the glyphs they set and stripped of
+    their cmap, so the characters printed cannot be looked up in the copy it
+    keeps. What subsetting does leave alone is the face's own account of
+    itself: the em it is drawn on, its revision, the day it was made, and the
+    unique identifier and version string in its name table.
+    """
+    marks: dict[str, object] = {}
+    head = font["head"]
+    marks["em"] = head.unitsPerEm
+    marks["revision"] = round(head.fontRevision, 5)
+    marks["made"] = head.created
+    for record in (3, 5):  # the unique identifier, and the version
+        named = font["name"].getDebugName(record)
+        if named:
+            marks[f"name{record}"] = named
+    return marks
+
+
+def cover_marks(face: bytes) -> dict[str, object]:
+    """Read those marks off the copy inside the built PDF."""
+    if not face:
+        return {}
+    try:
+        with TTFont(io.BytesIO(face), lazy=True, fontNumber=0) as opened:
+            return face_marks(opened)
+    except Exception:  # noqa: BLE001 - fontTools raises a different type per defect
+        logging.debug("The built PDF's copy of its Chinese face cannot be read back.")
+        return {}
+
+
+def file_marks(font: FontFile) -> dict[str, object]:
+    """Read those marks off a file on disk."""
+    try:
+        with font.open(lazy=True) as opened:
+            return face_marks(opened)
+    except Exception:  # noqa: BLE001 - fontTools raises a different type per defect
+        logging.debug("Not a readable font: %s", font.name)
+        return {}
+
+
+def same_revision(wanted: dict[str, object], found: dict[str, object]) -> bool:
+    """Whether a file could be the very copy the cover was set from.
+
+    Only the marks both sides carry are compared: a subsetter may drop a name
+    record, and a record it dropped is not evidence of a different face.
+    """
+    shared = wanted.keys() & found.keys()
+    return bool(shared) and all(wanted[mark] == found[mark] for mark in shared)
+
+
+def locate_font(name: str, root: Path, face: bytes = b"") -> FontFile:
+    """Find the file behind a PDF font name: shipped with the template, or installed.
 
     The built PDF names the face it used, and that name is a PostScript one --
     標楷體 comes through as DFKaiShu-SB-Estd-BF -- so the search has to match
@@ -557,17 +661,32 @@ def locate_font(name: str, root: Path) -> FontFile:
     metric-compatible stand-in, so every candidate is opened and made to say
     for itself that it is the font the thesis was built with. A .ttc is
     several faces in one file, and only one of them is the answer.
+
+    A name is not proof on its own, either: an older revision left beside the
+    current one, or an installed face carrying a shipped face's names, would
+    letter the spine from outlines, metrics and embedding rights the cover was
+    never set in -- and nothing downstream could tell, since every name still
+    agrees. So the copy the PDF keeps of the face is asked which candidate it
+    is, and a file that answers to the name but contradicts it is passed over.
     """
-    for path in sorted(root.glob("fonts/**/*")):
-        if path.suffix.lower() not in (".ttf", ".otf", ".ttc"):
+    wanted = cover_marks(face)
+    named = []
+    for candidate in font_files(root):
+        if not any(same_font(name, found) for found in font_names(candidate)):
             continue
-        for index in range(collection_size(path)):
-            candidate = FontFile(path, index)
-            if any(same_font(name, found) for found in font_names(candidate)):
-                return candidate
-    for candidate in installed_fonts():
-        if any(same_font(name, found) for found in font_names(candidate)):
+        if not wanted or same_revision(wanted, file_marks(candidate)):
             return candidate
+        named.append(candidate)
+    if named:
+        logging.warning(
+            "No file on this machine matches the copy of %s inside the built PDF: "
+            "%s answers to the name but is a different revision of it. The spine is "
+            "lettered from that file. Rebuild the thesis, or read the spine against "
+            "the cover before printing it.",
+            name,
+            named[0].name,
+        )
+        return named[0]
     raise CollectionError(
         f"The built PDF sets Chinese in {name}, but no file for it was found in "
         f"{root / 'fonts'} or among the fonts installed on this system. Install "
@@ -1669,7 +1788,7 @@ def build(args: argparse.Namespace) -> None:
         cover = read_cover(document)
 
     text = read_spine_text(cover, PROJECT_ROOT)
-    font_file = locate_font(cover.font, PROJECT_ROOT)
+    font_file = locate_font(cover.font, PROJECT_ROOT, cover.face)
     logging.info("The thesis sets Chinese in %s (%s)", cover.font, font_file.path)
     absent = missing_characters(font_file, text.characters())
     if absent:
