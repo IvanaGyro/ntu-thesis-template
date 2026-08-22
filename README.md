@@ -219,7 +219,8 @@ The width comes from `main.pdf`'s own page count:
 
 | Step | Default | Option |
 | --- | --- | --- |
-| Sheets of paper | the cover aside: one per page below 80 pages, one per two from there up | `--sides single \| double` |
+| Printed | one side of the sheet below 80 PDF pages, both from there up | `--sides single \| double` |
+| Sheets of paper | one per interior page, or one per two; the cover is not one of them | |
 | Text block | sheets × 0.10 mm, 80 磅道林紙 at 10 條 | `--paper-thickness MM` |
 | 平裝 | + 1 mm for the cover and the glue | `--binding-allowance MM` |
 | 精裝 | 平裝 + 4 mm of board | |

@@ -86,9 +86,12 @@ PAPERBACK_BINDING_MM = 1.00
 # between the 8 mm paperback and the 12 mm hardcover of NTU's own sample pair.
 BOARD_THICKNESS_MM = 4.00
 
-# 少於 80 頁預設單面列印，80 面以上預設雙面列印。
-# Below this page count a thesis is printed single-sided, one PDF page per
-# sheet; at or above it, double-sided, two PDF pages per sheet.
+# 少於 80 頁預設單面列印，80 面以上預設雙面列印。頁數以 PDF 的總頁數為準。
+# Below this many pages of the built PDF a thesis is printed single-sided, one
+# page per sheet; at or above it, double-sided, two pages per sheet. The count
+# is the PDF's own, cover included: it is how long the thesis reads, not how
+# many sheets the interior takes, and the cover is dropped only when those
+# sheets are counted.
 DUPLEX_THRESHOLD_PAGES = 80
 
 
@@ -969,6 +972,11 @@ def form_heights() -> list[float]:
     return [inch(height_in) for _, height_in in LAYOUT]
 
 
+def form_foot_pt() -> float:
+    """How far down the sheet the form's own table reaches."""
+    return sum(form_heights())
+
+
 def build_rows(
     text: SpineText, width_pt: float, ruler: pymupdf.Font, heights: list[float]
 ) -> Spine:
@@ -1064,11 +1072,14 @@ def lay_out(
         ink_top += block.ink_bottom_pt - block.ink_top_pt if order else room
         previous = index
 
-    heights[-1] = PAGE_HEIGHT_PT - sum(heights[:-1])
+    # The form's table stops short of the foot of the sheet, and the stretched
+    # one stops in the same place: filling the page to its edge would leave an
+    # office suite's own rounding nowhere to go but a second page.
+    heights[-1] = form_foot_pt() - sum(heights[:-1])
     if heights[-1] < 0:
         raise CollectionError(
-            "Aligning to the cover would run the spine past the foot of the page. "
-            "Pass --no-cover-alignment to keep the form's own rows."
+            "Aligning to the cover would run the spine past the foot of the form's "
+            "table. Pass --no-cover-alignment to keep the form's own rows."
         )
     return build_rows(text, width_pt, ruler, heights)
 
@@ -1647,14 +1658,17 @@ def build(args: argparse.Namespace) -> None:
         )
         spine = lay_out(text, mm(thickness.width_mm), ruler, aligned)
         metadata = spine_metadata(text, binding, thickness)
-        stem = args.output_dir / f"{source.stem}-spine-{binding.key}"
-        odt, pdf = stem.with_suffix(".odt"), stem.with_suffix(".pdf")
+        # Appended, not substituted: a thesis called thesis.final.pdf would
+        # otherwise have Path.with_suffix take ".final-spine-paperback" for an
+        # extension and write every file of both bindings over one another.
+        stem = f"{source.stem}-spine-{binding.key}"
+        odt, pdf = args.output_dir / f"{stem}.odt", args.output_dir / f"{stem}.pdf"
         write_odt(spine, family, embedding.face if embedding.editable else None, metadata, odt)
         write_pdf(spine, ruler, metadata, pdf, embedding.subsettable)
         verify(odt, pdf, spine, family, embedding.editable)
         written = [odt, pdf]
         if args.with_cover:
-            proof = stem.with_name(f"{stem.name}-with-cover").with_suffix(".pdf")
+            proof = args.output_dir / f"{stem}-with-cover.pdf"
             write_proof(pdf, source, proof)
             written.append(proof)
         describe(binding, thickness, spine, aligned, written)
@@ -1682,7 +1696,8 @@ def arguments() -> argparse.ArgumentParser:
         "--sides", choices=("auto", "single", "double"), default="auto",
         help=(
             "how the text pages are printed (default: auto, single-sided below "
-            f"{DUPLEX_THRESHOLD_PAGES} pages and double-sided from there up)"
+            f"{DUPLEX_THRESHOLD_PAGES} pages of the PDF and double-sided from "
+            "there up)"
         ),
     )
     parser.add_argument(

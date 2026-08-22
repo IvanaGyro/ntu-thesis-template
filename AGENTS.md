@@ -152,8 +152,9 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   heading columns with absolutely placed drawing frames; those became three
   ordinary rows (0.3942 + 0.9450 + 0.3143 = the form's 1.6535 in row), which
   keeps every other row where the form has it. The rows stop 33.98 pt short of
-  the foot of the page, as the form's own table does; they must never overrun
-  it.
+  the foot of the page, as the form's own table does, and the cover-aligned
+  layout stops there too rather than filling the sheet — an office suite's own
+  rounding would otherwise have nowhere to go but a second page.
 - A vertical CJK line hangs each character from the top of a one-em slot, so
   the first baseline sits one ascent below where the line starts. Fonts without
   that behaviour (標楷體 among them) make LibreOffice draw the ink one ascent
