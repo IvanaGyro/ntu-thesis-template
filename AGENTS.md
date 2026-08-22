@@ -173,31 +173,34 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   one. `read_cover` skips anything inside a link, or the spine is stretched to
   the stamp instead of to the cover's last line — a 68 pt error the
   `--with-cover` proof makes obvious.
-- Page one is the cover, printed on the card `PAPERBACK_BINDING_MM` already
-  pays for, so `measure` drops `COVER_PAGES` before counting text sheets.
+- Every page of `main.pdf` is an interior sheet, page one included: the card
+  cover is printed from `pixi run cover`, which reproduces page one rather
+  than replacing it. `PAPERBACK_BINDING_MM` pays for that card on top.
 - East Asian width alone does not decide orientation: the ambiguous class
   holds both marks a CJK line sets upright (×, °) and the accented letters of
   European alphabets, so `upright` sends ambiguous *letters* the way of the
   Latin run around them and keeps ambiguous symbols standing.
-- `scripts/make_spine.py` imports `generate_tdr_upload_script.py`'s LaTeX
-  parser rather than repeating it, so the spine and the TDR submission cannot
-  disagree about the title, the author, or the date. Values are run through
-  `collapse_spaces` for the same reason TeX collapses them: a title wrapped
-  across lines in `ntusetup.tex` must not reach the spine with a newline in it.
-  A line ended with `%` joins the next without even a space, which is how a
-  Chinese title is wrapped, so `tex_source` strips comments TeX's way before
-  that — the shared `strip_comments` leaves the break, which is right for the
-  abstracts it also reads and wrong here.
+- The spine reads every word off page one of `main.pdf`, not out of
+  `ntusetup.tex`: the class has already typeset it, so no LaTeX is left to
+  misread and the spine cannot drift from the cover it is bound with. The
+  cover's fixed line order is what identifies each field — the school, the
+  degree, the title in both languages, the author in both, the advisor, the
+  date — so a change to `\makecover`'s order is a change to `read_spine_text`.
+  A title that wraps takes more than one Chinese line and is rejoined; the
+  author is always the last Chinese line before 指導教授.
+- The cover prints the university, the college and the institute as one line
+  and the spine sets only the first and the last, so `split_heading` looks the
+  college up in `ntu-academic-units.tex` and falls back to the 大學/學院
+  suffixes when a name is not on the list.
 - The spine's rows are stretched so its text spans the same extent as the
   cover's, measured off page one of `main.pdf`. Only the gaps and the depth
   the heading justifies across take the stretch; the point sizes stay the
   form's. Because the table then ends where the cover's last line does, it
   always fits the sheet — a uniform scale of the rows does not, and pushes the
   date onto a second page.
-- The year and month are read from the cover's 「中華民國 NNN 年 M 月」 rather
-  than from the clock, because `ntusetup.tex` ships with `date` commented out
-  and the spine is written long after the build. It is the *last* such line on
-  the page: a title may carry a 中華民國 date of its own, set above it.
+- The year and month are read from the cover's 「中華民國 NNN 年 M 月」, the
+  *last* such line on the page: a title may carry a 中華民國 date of its own,
+  set above it.
 - A vertical line is not horizontal text turned on its side: wide characters
   stay upright, Latin runs turn a quarter turn and advance at their own width,
   and brackets and punctuation take the shapes the font's `vert` feature

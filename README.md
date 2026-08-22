@@ -220,7 +220,7 @@ The width comes from `main.pdf`'s own page count:
 | Step | Default | Option |
 | --- | --- | --- |
 | Printed | one side of the sheet below 80 PDF pages, both from there up | `--sides single \| double` |
-| Sheets of paper | one per interior page, or one per two; the cover is not one of them | |
+| Sheets of paper | one per page, or one per two | |
 | Text block | sheets × 0.10 mm, 80 磅道林紙 at 10 條 | `--paper-thickness MM` |
 | 平裝 | + 1 mm for the cover and the glue | `--binding-allowance MM` |
 | 精裝 | 平裝 + 4 mm of board | |
@@ -231,7 +231,15 @@ The 4 mm between the two bindings is the gap between NTU's own 8 mm 平裝 and
 one and pass `--paperback-width`; the hardcover always adds its boards to that,
 so measure the paperback even when only the hardcover is being written.
 
-### How it is set
+### What it says, and how it is set
+
+Every word comes off the cover of `main.pdf` — page one, as the class
+typeset it — rather than out of `ntusetup.tex`. The spine therefore says what
+the bound book says: the LaTeX has already been rendered, so there is nothing
+left to misread, and the two cannot drift apart. The cover runs the
+university, the college and the institute together on one line; the spine
+takes the first and the last of those, NTU's own list of colleges saying
+where each one ends.
 
 The layout follows NTU's official spine form to the row: 國立臺灣大學 and the
 institute side by side at the head in 真正直書 (true vertical setting), then
@@ -248,11 +256,8 @@ rules name. `--no-cover-alignment` keeps the form's own row positions instead.
 
 A long institute name, a long title or a narrow spine makes a block set
 smaller rather than run off the artwork, and the run reports every size it had
-to shrink. The year and month come off the cover itself, so a spine written
-weeks after the build still carries the thesis's date rather than today's, and
-the run warns when a line it is about to letter does not appear on the cover —
-which catches a stale `main.pdf` as well as a value holding LaTeX the spine
-cannot read.
+to shrink. A title long enough to wrap across two lines of the cover is put
+back together as one.
 
 ### Fonts, and which file to print
 
@@ -272,7 +277,7 @@ happened.
 
 The PDF is drawn rather than converted, so the ODT and the PDF agree without
 an office suite in the toolchain: with the 全字庫 faces the template ships,
-opening the ODT in LibreOffice puts every character within 0.11 mm of where
+opening the ODT in LibreOffice puts every character within 0.12 mm of where
 the PDF has it. Other faces are laid out identically and print identically
 from the PDF, but LibreOffice sets some of them -- 標楷體 among them -- about
 one ascent higher on the page, and the run says so. **Print the PDF**; the ODT
