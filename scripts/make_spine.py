@@ -501,6 +501,7 @@ SHIPPED_FACES = ("TW-Kai-98_1", "TW-Sung-98_1")
 FSTYPE_RESTRICTED = 0x0002  # embedding forbidden without the vendor's leave
 FSTYPE_EDITABLE = 0x0008  # embedding allowed in a document that can be edited
 FSTYPE_NO_SUBSETTING = 0x0100  # embed the whole face or none of it
+FSTYPE_BITMAP_ONLY = 0x0200  # only the bitmaps inside it, never the outlines
 
 
 def embeddable_font(font: FontFile, characters: str) -> tuple[bytes, bool]:
@@ -525,6 +526,15 @@ def embeddable_font(font: FontFile, characters: str) -> tuple[bytes, bool]:
             f"{font.name} forbids embedding, so it cannot travel inside the spine "
             "files. Build the thesis with a fontset whose Chinese face ships with "
             "the template."
+        )
+    if rights & FSTYPE_BITMAP_ONLY:
+        # A spine is lettered at whatever size it takes, and both outputs carry
+        # outlines; a face that allows only its bitmaps to travel cannot be one
+        # of them, whatever else its rights permit.
+        raise CollectionError(
+            f"{font.name} allows only its bitmaps to be embedded, not its outlines, "
+            "which is what the spine files carry. Build the thesis with a fontset "
+            "whose Chinese face ships with the template."
         )
 
     options = subset.Options()

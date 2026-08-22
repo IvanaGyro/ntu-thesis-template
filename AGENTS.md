@@ -165,7 +165,9 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   the faces in `SHIPPED_FACES`, whose licences (政府資料開放授權條款-1.0 /
   OFL-1.1) permit a modified version. A print-only face of the user's own is
   carried by the PDF, which is what that permission covers, and merely named
-  in the ODT; one whose fsType forbids embedding at all is refused.
+  in the ODT. Two fsType bits are refused outright instead: 0x0002, which
+  forbids embedding, and 0x0200, which permits only the face's bitmaps to
+  travel — both outputs carry outlines.
 - The class stamps a linked `doi:` line a centimetre from the foot of page
   one. `read_cover` skips anything inside a link, or the spine is stretched to
   the stamp instead of to the cover's last line — a 68 pt error the
