@@ -137,6 +137,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tesseract-5.5.2-h1f36d38_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_hd70dff1_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tornado-6.5.8-py312h4c3975b_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/uharfbuzz-0.56.0-py312h1a69dff_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/unicodedata2-17.0.1-py312h4c3975b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/wayland-1.26.0-hd6090a7_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/xcb-util-0.4.1-h4f16b4b_2.conda
@@ -2226,6 +2227,21 @@ packages:
   run_exports: {}
   size: 869730
   timestamp: 1786226754702
+- conda: https://conda.anaconda.org/conda-forge/linux-64/uharfbuzz-0.56.0-py312h1a69dff_0.conda
+  sha256: cd0589e60fb89ab999c196b13547a579d85e22666df939b26c37cff0c76dcc3e
+  md5: d27af68606bb5509763534f6425d21db
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  - libharfbuzz >=14.3.0
+  - libstdcxx >=14
+  - python >=3.12,<3.13.0a0
+  - python_abi 3.12.* *_cp312
+  license: Apache-2.0
+  license_family: APACHE
+  run_exports: {}
+  size: 321983
+  timestamp: 1785994753408
 - conda: https://conda.anaconda.org/conda-forge/linux-64/unicodedata2-17.0.1-py312h4c3975b_0.conda
   sha256: 895bbfe9ee25c98c922799de901387d842d7c01cae45c346879865c6a907f229
   md5: 0b6c506ec1f272b685240e70a29261b8
