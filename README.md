@@ -219,7 +219,7 @@ The width comes from `main.pdf`'s own page count:
 
 | Step | Default | Option |
 | --- | --- | --- |
-| Sheets of paper | one per page below 80 pages, one per two pages from there up | `--sides single \| double` |
+| Sheets of paper | the cover aside: one per page below 80 pages, one per two from there up | `--sides single \| double` |
 | Text block | sheets × 0.10 mm, 80 磅道林紙 at 10 條 | `--paper-thickness MM` |
 | 平裝 | + 1 mm for the cover and the glue | `--binding-allowance MM` |
 | 精裝 | 平裝 + 4 mm of board | |
@@ -248,17 +248,26 @@ rules name. `--no-cover-alignment` keeps the form's own row positions instead.
 A long institute name, a long title or a narrow spine makes a block set
 smaller rather than run off the artwork, and the run reports every size it had
 to shrink. The year and month come off the cover itself, so a spine written
-weeks after the build still carries the thesis's date rather than today's.
+weeks after the build still carries the thesis's date rather than today's, and
+the run warns when a line it is about to letter does not appear on the cover —
+which catches a stale `main.pdf` as well as a value holding LaTeX the spine
+cannot read.
 
 ### Fonts, and which file to print
 
 Both files carry a subset of the very face `main.pdf` sets Chinese in --
 whichever `fontset` and `cjkfont` in `main.tex` selected, found among the
 shipped fonts or among the ones installed on this machine, by the PostScript
-name the PDF records (標楷體 comes through as `DFKaiShu-SB-Estd-BF`). A face
-that forbids embedding is refused; one marked print-only has its subset
-written installable, or an office suite would silently letter the spine in
-whatever it fell back to.
+name the PDF records (標楷體 comes through as `DFKaiShu-SB-Estd-BF`, and a
+`.ttc` collection by the index of the face inside it).
+
+A face that forbids embedding is refused outright. One marked print-only is
+carried by the PDF, which is what that permission covers; an ODT is a document
+that can be edited, and an office suite honours only a face marked installable
+there. The 全字庫 faces the template ships may simply be marked so, because
+their licences permit a modified version — a face of your own is named in the
+ODT instead and left to your machine to supply, and the run says which
+happened.
 
 The PDF is drawn rather than converted, so the ODT and the PDF agree without
 an office suite in the toolchain: with the 全字庫 faces the template ships,

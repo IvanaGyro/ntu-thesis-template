@@ -200,10 +200,12 @@ def parse_degree(path: Path) -> str:
     than lettering a doctoral spine 碩士論文.
     """
     text = strip_comments(path.read_text(encoding="utf-8"))
-    options = re.search(r"\\documentclass\s*\[(.*?)\]\s*\{ntuthesis\}", text, re.DOTALL)
-    if not options:
-        raise CollectionError(f"Could not find ntuthesis options in {path}")
-    degree = re.search(r"\bdegree\s*=\s*\{?\s*([A-Za-z]+)\s*\}?", options.group(1))
+    # The option list is itself optional: \documentclass{ntuthesis} is valid
+    # and takes every class default, this one included.
+    declared = re.search(r"\\documentclass\s*(?:\[(.*?)\])?\s*\{ntuthesis\}", text, re.DOTALL)
+    if not declared:
+        raise CollectionError(f"Could not find \\documentclass{{ntuthesis}} in {path}")
+    degree = re.search(r"\bdegree\s*=\s*\{?\s*([A-Za-z]+)\s*\}?", declared.group(1) or "")
     if degree is None:
         return DEGREE_NAMES["master"]
     if degree.group(1) not in DEGREE_NAMES:
@@ -309,6 +311,12 @@ def read_thesis_text(root: Path, cover_date: tuple[int, int] | None) -> SpineTex
 # 封面日期行：中華民國 115 年 8 月。
 COVER_DATE = re.compile(r"中華民國\s*(\d+)\s*年\s*(\d+)\s*月")
 
+# The class stamps a linked doi: line a centimetre from the foot of every
+# page, page one included. It is an overlay, not part of the cover's text
+# block, and measuring to it would stretch the spine past the cover's last
+# line -- so anything inside a link on the cover is left out.
+COVER_OVERLAY = re.compile(r"^\s*doi:")
+
 # Anything at or above this code point is CJK rather than Latin, which is
 # enough to tell the cover's two faces apart.
 CJK_FIRST = 0x2E80
@@ -324,10 +332,15 @@ class Cover:
     top_pt: float
     bottom_pt: float
     date: tuple[int, int] | None
+    text: str
 
     @property
     def text_height_pt(self) -> float:
         return self.bottom_pt - self.top_pt
+
+    def prints(self, wording: str) -> bool:
+        """Whether the cover carries this wording, spacing and breaks aside."""
+        return re.sub(r"\s", "", wording) in re.sub(r"\s", "", self.text)
 
 
 def read_cover(document: pymupdf.Document) -> Cover:
@@ -338,15 +351,23 @@ def read_cover(document: pymupdf.Document) -> Cover:
     CJK as on a line of Latin.
     """
     page = document[0]
-    font, top, bottom = "", None, None
+    overlays = [pymupdf.Rect(link["from"]) for link in page.get_links()]
+    font, top, bottom, printed = "", None, None, ""
     for block in page.get_text("rawdict")["blocks"]:
         for line in block.get("lines", []):
             for span in line["spans"]:
+                text = "".join(char["c"] for char in span["chars"])
+                if COVER_OVERLAY.match(text):
+                    continue
                 for char in span["chars"]:
                     if char["c"].isspace():
                         continue
-                    top = char["bbox"][1] if top is None else min(top, char["bbox"][1])
-                    bottom = char["bbox"][3] if bottom is None else max(bottom, char["bbox"][3])
+                    box = pymupdf.Rect(char["bbox"])
+                    if any(box in overlay for overlay in overlays):
+                        continue
+                    top = box.y0 if top is None else min(top, box.y0)
+                    bottom = box.y1 if bottom is None else max(bottom, box.y1)
+                    printed += char["c"]
                     if not font and ord(char["c"]) >= CJK_FIRST:
                         font = re.sub(r"^[A-Z]{6}\+", "", span["font"])
     if not font:
@@ -354,30 +375,16 @@ def read_cover(document: pymupdf.Document) -> Cover:
             "Page 1 of the built PDF prints no Chinese, so its Chinese font cannot "
             "be identified. Build the cover before writing the spine."
         )
-    printed = COVER_DATE.search(page.get_text())
+    dated = COVER_DATE.search(page.get_text())
     return Cover(
         font=font,
         width_pt=page.rect.width,
         height_pt=page.rect.height,
         top_pt=top,
         bottom_pt=bottom,
-        date=(int(printed.group(1)), int(printed.group(2))) if printed else None,
+        date=(int(dated.group(1)), int(dated.group(2))) if dated else None,
+        text=printed,
     )
-
-
-def font_names(path: Path) -> tuple[str, ...]:
-    """The family, full and PostScript names a font file answers to.
-
-    Users drop their own files into fonts/ for fontset=template, so anything
-    that will not open as a font is simply not the font being looked for.
-    """
-    try:
-        with TTFont(path, lazy=True, fontNumber=0) as font:
-            table = font["name"]
-            return tuple(name for name in (table.getDebugName(i) for i in (1, 4, 6)) if name)
-    except Exception:  # noqa: BLE001 - fontTools raises a different type per defect
-        logging.debug("Not a readable font: %s", path)
-        return ()
 
 
 def reduced(value: str) -> str:
@@ -388,10 +395,44 @@ def same_font(name: str, candidate: str) -> bool:
     return reduced(name) == reduced(candidate)
 
 
-def installed_fonts() -> list[tuple[Path, tuple[str, ...]]]:
-    """Every font fontconfig knows about, with the names it answers to."""
+@dataclass(frozen=True)
+class FontFile:
+    """A face on disk. A .ttc holds several, so the index travels with the path."""
+
+    path: Path
+    index: int = 0
+
+    @property
+    def name(self) -> str:
+        return self.path.name if not self.index else f"{self.path.name}#{self.index}"
+
+    @property
+    def shipped(self) -> bool:
+        return any(same_font(face, name) for face in SHIPPED_FACES for name in font_names(self))
+
+    def open(self, **kwargs) -> TTFont:
+        return TTFont(self.path, fontNumber=self.index, **kwargs)
+
+
+def font_names(font: FontFile) -> tuple[str, ...]:
+    """The family, full and PostScript names a face answers to.
+
+    Users drop their own files into fonts/ for fontset=template, so anything
+    that will not open as a font is simply not the font being looked for.
+    """
+    try:
+        with font.open(lazy=True) as opened:
+            table = opened["name"]
+            return tuple(name for name in (table.getDebugName(i) for i in (1, 4, 6)) if name)
+    except Exception:  # noqa: BLE001 - fontTools raises a different type per defect
+        logging.debug("Not a readable font: %s", font.name)
+        return ()
+
+
+def installed_fonts() -> list[FontFile]:
+    """Every face fontconfig knows about, collections expanded."""
     listed = subprocess.run(
-        ["fc-list", "--format=%{file}\t%{postscriptname}\t%{family}\t%{fullname}\n"],
+        ["fc-list", "--format=%{file}\t%{index}\n"],
         capture_output=True,
         text=True,
     )
@@ -399,32 +440,33 @@ def installed_fonts() -> list[tuple[Path, tuple[str, ...]]]:
         return []
     found = []
     for row in listed.stdout.splitlines():
-        path, _, names = row.partition("\t")
+        path, _, index = row.partition("\t")
         if path:
-            found.append((Path(path), tuple(names.replace("\t", ",").split(","))))
+            found.append(FontFile(Path(path), int(index) if index.isdigit() else 0))
     return found
 
 
-def locate_font(name: str, root: Path) -> Path:
-    """Find the file behind a PDF font name: shipped with the template, or installed.
+def locate_font(name: str, root: Path) -> FontFile:
+    """Find the face behind a PDF font name: shipped with the template, or installed.
 
     The built PDF names the face it used, and that name is a PostScript one --
     標楷體 comes through as DFKaiShu-SB-Estd-BF -- so the search has to match
     on more than the family. fontconfig is asked for what it has rather than
     asked to match: it answers a request for a face it does not have with a
     metric-compatible stand-in, so every candidate is opened and made to say
-    for itself that it is the font the thesis was built with.
+    for itself that it is the font the thesis was built with. A .ttc is
+    several faces in one file, and only one of them is the answer.
     """
     for path in sorted(root.glob("fonts/**/*")):
-        if path.suffix.lower() in (".ttf", ".otf", ".ttc") and any(
-            same_font(name, candidate) for candidate in font_names(path)
-        ):
-            return path
-    for path, names in installed_fonts():
-        if any(same_font(name, candidate) for candidate in names) and any(
-            same_font(name, candidate) for candidate in font_names(path)
-        ):
-            return path
+        if path.suffix.lower() not in (".ttf", ".otf", ".ttc"):
+            continue
+        for index in range(collection_size(path)):
+            candidate = FontFile(path, index)
+            if any(same_font(name, found) for found in font_names(candidate)):
+                return candidate
+    for candidate in installed_fonts():
+        if any(same_font(name, found) for found in font_names(candidate)):
+            return candidate
     raise CollectionError(
         f"The built PDF sets Chinese in {name}, but no file for it was found in "
         f"{root / 'fonts'} or among the fonts installed on this system. Install "
@@ -432,12 +474,27 @@ def locate_font(name: str, root: Path) -> Path:
     )
 
 
-# The faces this template ships, and the ones the two outputs have been
-# checked against: with either of them LibreOffice sets the ODT within a tenth
-# of a millimetre of where the PDF draws it. Other faces are laid out the same
-# way and print the same from the PDF, but LibreOffice sets some of them --
-# 標楷體 among them -- about one ascent higher on the page.
-VERIFIED_FACES = ("TW-Kai-98_1", "TW-Sung-98_1")
+def collection_size(path: Path) -> int:
+    if path.suffix.lower() != ".ttc":
+        return 1
+    try:
+        from fontTools.ttLib import TTCollection
+
+        with TTCollection(path, lazy=True) as collection:
+            return len(collection.fonts)
+    except Exception:  # noqa: BLE001 - an unreadable collection is simply not a match
+        return 1
+
+
+# The Chinese faces this template redistributes. Two things are true of these
+# and of no others: their licences (政府資料開放授權條款-1.0 or OFL-1.1) permit
+# a modified version, so a subset of them may be written with its embedding
+# rights relaxed; and the two outputs have been checked against them, with
+# LibreOffice setting the ODT within a tenth of a millimetre of where the PDF
+# draws it. Other faces are laid out the same way and print the same from the
+# PDF, but LibreOffice sets some of them -- 標楷體 among them -- about one
+# ascent higher on the page.
+SHIPPED_FACES = ("TW-Kai-98_1", "TW-Sung-98_1")
 
 
 # OS/2 fsType, the font's own statement of what may be embedded where.
@@ -446,18 +503,26 @@ FSTYPE_EDITABLE = 0x0008  # embedding allowed in a document that can be edited
 FSTYPE_NO_SUBSETTING = 0x0100  # embed the whole face or none of it
 
 
-def embeddable_font(path: Path, characters: str) -> bytes:
-    """Cut the face down to the glyphs the spine prints, ready to embed.
+def embeddable_font(font: FontFile, characters: str) -> tuple[bytes, bool]:
+    """Cut the face down to the glyphs the spine prints, and say where it may go.
 
     The shipped 全字庫 faces are tens of megabytes; a spine sets a few dozen
     characters. Every name record is kept so that the family name in the ODT
     still resolves to the embedded file.
+
+    The second value is whether the ODT may carry the subset. A PDF is a
+    printed page, which `fsType` bit 2 allows; an ODT is a document that can
+    be edited, which it does not, and an office suite honours only a face
+    marked installable. The template's own faces may simply be marked so --
+    their licences permit a modified version -- but a face belonging to the
+    user may not be relabelled on their behalf, so the ODT names it and
+    leaves the machine to supply it.
     """
-    with TTFont(path, lazy=True, fontNumber=0) as probe:
+    with font.open(lazy=True) as probe:
         rights = probe["OS/2"].fsType
     if rights & FSTYPE_RESTRICTED:
         raise CollectionError(
-            f"{path.name} forbids embedding, so it cannot travel inside the spine "
+            f"{font.name} forbids embedding, so it cannot travel inside the spine "
             "files. Build the thesis with a fontset whose Chinese face ships with "
             "the template."
         )
@@ -471,32 +536,30 @@ def embeddable_font(path: Path, characters: str) -> bytes:
     options.name_languages = ["*"]
     options.notdef_outline = True
     options.recalc_bounds = True
-    font = subset.load_font(str(path), options)
+    options.font_number = font.index
+    face = subset.load_font(str(font.path), options)
     if rights & FSTYPE_NO_SUBSETTING:
-        logging.warning("%s asks not to be subset; embedding it whole.", path.name)
+        logging.warning("%s asks not to be subset; embedding it whole.", font.name)
     else:
         subsetter = subset.Subsetter(options=options)
         subsetter.populate(text=characters)
-        subsetter.subset(font)
-    if rights and not rights & FSTYPE_EDITABLE:
-        # A face marked preview-and-print is licensed for exactly what a spine
-        # is, but an office suite opens an ODT for editing and substitutes
-        # anything not marked installable -- silently, so the print shop would
-        # letter the spine in whatever it happened to fall back to. The subset
-        # is therefore written installable. The faces this template ships allow
-        # that: 全字庫 is 政府資料開放授權條款-1.0 or OFL-1.1 and Tinos is
-        # OFL-1.1, and all three permit modified versions. Check your own
-        # licence before embedding a font of your own.
+        subsetter.subset(face)
+
+    editable = not rights or bool(rights & FSTYPE_EDITABLE)
+    if not editable and font.shipped:
+        face["OS/2"].fsType = 0
+        editable = True
+    elif not editable:
         logging.warning(
-            "%s marks itself print-only; the embedded subset is written installable "
-            "so that readers honour it rather than substituting another face.",
-            path.name,
+            "%s allows embedding for print but not for editing, and is not one of "
+            "the faces this template may relabel. The PDF carries it; the ODT "
+            "names it instead, so open the ODT on a machine that has it installed.",
+            font.name,
         )
-        font["OS/2"].fsType = 0
     written = io.BytesIO()
-    font.save(written)
-    font.close()
-    return written.getvalue()
+    face.save(written)
+    face.close()
+    return written.getvalue(), editable
 
 
 def vertical_substitutions(font: TTFont) -> dict[str, str]:
@@ -558,15 +621,21 @@ def drawn_face(font_bytes: bytes, vertical: str) -> bytes:
     return written.getvalue()
 
 
-def missing_characters(path: Path, characters: str) -> str:
-    with TTFont(path, lazy=True, fontNumber=0) as font:
-        table = font.getBestCmap()
+def missing_characters(font: FontFile, characters: str) -> str:
+    with font.open(lazy=True) as opened:
+        table = opened.getBestCmap()
     return "".join(char for char in characters if ord(char) not in table)
 
 
 # --------------------------------------------------------------------------
 # How wide the spine has to be
 # --------------------------------------------------------------------------
+
+
+# 封面另以卡紙印製，不算內頁。
+# Page one is the cover, printed on the card the binding allowance already
+# pays for, so it is not one of the text sheets stacked in the spine.
+COVER_PAGES = 1
 
 
 @dataclass(frozen=True)
@@ -610,10 +679,11 @@ def measure(
     binding_mm: float,
     measured_mm: float | None,
 ) -> Thickness:
+    interior = max(pages - COVER_PAGES, 0)
     return Thickness(
         pages=pages,
         duplex=duplex,
-        sheets=math.ceil(pages / 2) if duplex else pages,
+        sheets=math.ceil(interior / 2) if duplex else interior,
         paper_mm=paper_mm,
         binding_mm=binding_mm,
         board_mm=binding.board_mm,
@@ -635,10 +705,18 @@ def measure(
 def upright(character: str) -> bool:
     """Whether a character stands up in a vertical line or turns on its side.
 
-    East Asian width is exactly this distinction: the wide, full-width and
-    ambiguous classes are the ones a CJK line sets upright.
+    East Asian width very nearly draws this line: wide and full-width stand
+    up, narrow turns. The ambiguous class needs a second look, because it
+    holds both marks a CJK line sets upright (×, °) and the accented letters
+    of European alphabets -- and turning `Caf` while standing `é` up would
+    break one word into two orientations.
     """
-    return unicodedata.east_asian_width(character) in ("W", "F", "A")
+    width = unicodedata.east_asian_width(character)
+    if width in ("W", "F"):
+        return True
+    if width != "A":
+        return False
+    return not (ord(character) < CJK_FIRST and unicodedata.category(character)[0] in "LM")
 
 
 @dataclass(frozen=True)
@@ -1056,21 +1134,26 @@ def millimetres(value_pt: float) -> str:
     return f"{value_pt * MM_PER_IN / PT_PER_IN:.4f}mm"
 
 
-def font_declaration(family: str, embedded: str) -> str:
-    """Declare the face and point it at the copy stored inside the ODT.
+def font_declaration(family: str, embedded: str | None) -> str:
+    """Declare the face, pointing at the copy inside the ODT when there is one.
 
     Both content.xml and styles.xml carry this; a reader consults whichever it
-    reaches first.
+    reaches first. Without an embedded copy the declaration is just a name,
+    and the reader's own machine supplies the face.
     """
-    return (
-        f"<office:font-face-decls><style:font-face style:name={quoteattr(family)} "
-        f"""svg:font-family={quoteattr(f"'{family}'")} """
-        'style:font-family-generic="system" style:font-pitch="variable">'
+    source = (
         f"<svg:font-face-src><svg:font-face-uri xlink:href={quoteattr(embedded)} "
         'xlink:type="simple" loext:font-style="normal" loext:font-weight="normal">'
         '<svg:font-face-format svg:string="truetype"/>'
         "</svg:font-face-uri></svg:font-face-src>"
-        "</style:font-face></office:font-face-decls>"
+        if embedded
+        else ""
+    )
+    return (
+        f"<office:font-face-decls><style:font-face style:name={quoteattr(family)} "
+        f"""svg:font-family={quoteattr(f"'{family}'")} """
+        'style:font-family-generic="system" style:font-pitch="variable">'
+        f"{source}</style:font-face></office:font-face-decls>"
     )
 
 
@@ -1170,7 +1253,7 @@ def table_rows(spine: Spine) -> str:
     return "".join(rows)
 
 
-def content_xml(spine: Spine, family: str, font_path: str) -> str:
+def content_xml(spine: Spine, family: str, font_path: str | None) -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<office:document-content {ODF_NAMESPACES} office:version="1.3">'
@@ -1185,7 +1268,7 @@ def content_xml(spine: Spine, family: str, font_path: str) -> str:
     )
 
 
-def styles_xml(width_pt: float, family: str, font_path: str) -> str:
+def styles_xml(width_pt: float, family: str, font_path: str | None) -> str:
     """The page itself: as tall as the thesis, as wide as the spine, no margins."""
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -1238,7 +1321,7 @@ def settings_xml() -> str:
     )
 
 
-def manifest_xml(font_path: str) -> str:
+def manifest_xml(font_path: str | None) -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" '
@@ -1249,20 +1332,25 @@ def manifest_xml(font_path: str) -> str:
         '<manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>'
         '<manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/>'
         '<manifest:file-entry manifest:full-path="settings.xml" manifest:media-type="text/xml"/>'
-        f"<manifest:file-entry manifest:full-path={quoteattr(font_path)} "
-        'manifest:media-type="application/x-font-ttf"/>'
-        "</manifest:manifest>"
+        + (
+            f"<manifest:file-entry manifest:full-path={quoteattr(font_path)} "
+            'manifest:media-type="application/x-font-ttf"/>'
+            if font_path
+            else ""
+        )
+        + "</manifest:manifest>"
     )
 
 
 def write_odt(
     spine: Spine,
     family: str,
-    font_bytes: bytes,
+    font_bytes: bytes | None,
     metadata: dict[str, str],
     target: Path,
 ) -> None:
-    font_path = f"Fonts/{re.sub(r'[^A-Za-z0-9._-]', '-', family)}.ttf"
+    """Write the ODT, carrying the face when its rights allow and naming it when not."""
+    font_path = f"Fonts/{re.sub(r'[^A-Za-z0-9._-]', '-', family)}.ttf" if font_bytes else None
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
         # The mimetype has to come first and unstored, so that a reader can
         # identify the file from its first bytes without inflating anything.
@@ -1276,7 +1364,8 @@ def write_odt(
         archive.writestr("styles.xml", styles_xml(spine.width_pt, family, font_path))
         archive.writestr("meta.xml", meta_xml(metadata))
         archive.writestr("settings.xml", settings_xml())
-        archive.writestr(font_path, font_bytes)
+        if font_path:
+            archive.writestr(font_path, font_bytes)
     logging.info("Wrote %s", target)
 
 
@@ -1296,7 +1385,7 @@ def spine_metadata(text: SpineText, binding: Binding, thickness: Thickness) -> d
     }
 
 
-def verify(odt: Path, pdf: Path, spine: Spine, family: str) -> None:
+def verify(odt: Path, pdf: Path, spine: Spine, family: str, embedded: bool) -> None:
     """Refuse to report success until both files hold what was asked for."""
     expected = "".join(line for block in spine.blocks for line in block.texts)
     with pymupdf.open(pdf) as document:
@@ -1314,8 +1403,8 @@ def verify(odt: Path, pdf: Path, spine: Spine, family: str) -> None:
         # writer names an embedded face by its full name, style included, so
         # the family has to be found inside that rather than equal to it.
         fonts = {font[0]: font[3] for font in page.get_fonts(full=True)}
-        embedded = [reduced(re.sub(r"^[A-Z]{6}\+", "", name)) for name in fonts.values()]
-        if len(fonts) != 1 or reduced(family) not in embedded[0]:
+        drawn_in = [reduced(re.sub(r"^[A-Z]{6}\+", "", name)) for name in fonts.values()]
+        if len(fonts) != 1 or reduced(family) not in drawn_in[0]:
             raise CollectionError(f"{pdf.name} does not set the spine in {family} alone.")
         if not document.extract_font(next(iter(fonts)))[3]:
             raise CollectionError(f"{pdf.name} does not embed {family}.")
@@ -1327,12 +1416,14 @@ def verify(odt: Path, pdf: Path, spine: Spine, family: str) -> None:
         names = archive.namelist()
         if names[0] != "mimetype" or archive.getinfo("mimetype").compress_type != zipfile.ZIP_STORED:
             raise CollectionError(f"{odt.name} does not open with an unstored mimetype.")
-        font_entries = [name for name in names if name.startswith("Fonts/")]
-        if len(font_entries) != 1 or not archive.read(font_entries[0]):
-            raise CollectionError(f"{odt.name} does not embed {family}.")
         content = archive.read("content.xml").decode("utf-8")
-        if font_entries[0] not in content:
+        font_entries = [name for name in names if name.startswith("Fonts/")]
+        if embedded and (len(font_entries) != 1 or not archive.read(font_entries[0])):
+            raise CollectionError(f"{odt.name} does not embed {family}.")
+        if font_entries and font_entries[0] not in content:
             raise CollectionError(f"{odt.name} does not point its styles at the embedded font.")
+        if quoteattr(family) not in content:
+            raise CollectionError(f"{odt.name} does not name {family}.")
         for character in set(expected) - set(" 　"):
             if escape(character) not in content:
                 raise CollectionError(f"{odt.name} is missing {character!r}.")
@@ -1371,8 +1462,9 @@ def describe(
     print(f"{binding.name_zh} ({binding.key}): {thickness.width_mm:g} mm wide")
     if thickness.measured_mm is None:
         print(
-            f"  thickness   {thickness.pages} pages, {sides}, {thickness.sheets} sheets"
-            f" x {thickness.paper_mm:g} mm = {thickness.text_block_mm:.2f} mm"
+            f"  thickness   {thickness.pages} pages less the cover, {sides},"
+            f" {thickness.sheets} sheets x {thickness.paper_mm:g} mm"
+            f" = {thickness.text_block_mm:.2f} mm"
         )
         added = f"{thickness.binding_mm:g} mm cover and glue"
         if thickness.board_mm:
@@ -1412,12 +1504,12 @@ def build(args: argparse.Namespace) -> None:
 
     text = read_thesis_text(PROJECT_ROOT, cover.date)
     font_file = locate_font(cover.font, PROJECT_ROOT)
-    logging.info("The thesis sets Chinese in %s (%s)", cover.font, font_file)
+    logging.info("The thesis sets Chinese in %s (%s)", cover.font, font_file.path)
     absent = missing_characters(font_file, text.characters())
     if absent:
         raise CollectionError(f"{font_file.name} has no glyph for {absent!r}.")
 
-    if not any(same_font(face, name) for face in VERIFIED_FACES for name in font_names(font_file)):
+    if not font_file.shipped:
         logging.warning(
             "%s is not one of the faces this template ships. Both files are laid "
             "out alike, but LibreOffice sets some faces' vertical lines about an "
@@ -1425,7 +1517,19 @@ def build(args: argparse.Namespace) -> None:
             "to print.",
             font_file.name,
         )
-    font_bytes = embeddable_font(font_file, text.characters())
+    # #8's safety net: the shared LaTeX parser drops a command it does not
+    # know, and the spine would then quietly say something the cover does not.
+    for name in ("university", "institute", "degree", "title", "author"):
+        wording = getattr(text, name)
+        if not cover.prints(wording):
+            logging.warning(
+                "The cover does not print %s %r. Check that main.pdf is the build "
+                "of this ntusetup.tex, and that the value holds no LaTeX the "
+                "spine cannot read.",
+                name,
+                wording,
+            )
+    font_bytes, editable = embeddable_font(font_file, text.characters())
     # The ODT keeps the face as it is, because LibreOffice picks the vertical
     # forms itself; the PDF carries a copy that has already picked them.
     drawn = drawn_face(font_bytes, text.vertical_characters())
@@ -1449,9 +1553,9 @@ def build(args: argparse.Namespace) -> None:
         metadata = spine_metadata(text, binding, thickness)
         stem = args.output_dir / f"{source.stem}-spine-{binding.key}"
         odt, pdf = stem.with_suffix(".odt"), stem.with_suffix(".pdf")
-        write_odt(spine, family, font_bytes, metadata, odt)
+        write_odt(spine, family, font_bytes if editable else None, metadata, odt)
         write_pdf(spine, ruler, metadata, pdf)
-        verify(odt, pdf, spine, family)
+        verify(odt, pdf, spine, family, editable)
         written = [odt, pdf]
         if args.with_cover:
             proof = stem.with_name(f"{stem.name}-with-cover").with_suffix(".pdf")

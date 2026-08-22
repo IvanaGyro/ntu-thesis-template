@@ -161,10 +161,21 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   faces and NTU's sample PDFs. The row geometry is identical either way.
 - LibreOffice silently substitutes an embedded font that is not marked
   installable, which is why `embeddable_font` clears `OS/2.fsType` on the
-  subset — TW-Kai ships as preview-and-print only. A face whose fsType forbids
-  embedding outright is refused instead. Both shipped licences
-  (政府資料開放授權條款-1.0 / OFL-1.1) permit the modification; a user's own
-  proprietary 標楷體 may not.
+  subset — TW-Kai ships as preview-and-print only. It does that **only** for
+  the faces in `SHIPPED_FACES`, whose licences (政府資料開放授權條款-1.0 /
+  OFL-1.1) permit a modified version. A print-only face of the user's own is
+  carried by the PDF, which is what that permission covers, and merely named
+  in the ODT; one whose fsType forbids embedding at all is refused.
+- The class stamps a linked `doi:` line a centimetre from the foot of page
+  one. `read_cover` skips anything inside a link, or the spine is stretched to
+  the stamp instead of to the cover's last line — a 68 pt error the
+  `--with-cover` proof makes obvious.
+- Page one is the cover, printed on the card `PAPERBACK_BINDING_MM` already
+  pays for, so `measure` drops `COVER_PAGES` before counting text sheets.
+- East Asian width alone does not decide orientation: the ambiguous class
+  holds both marks a CJK line sets upright (×, °) and the accented letters of
+  European alphabets, so `upright` sends ambiguous *letters* the way of the
+  Latin run around them and keeps ambiguous symbols standing.
 - `scripts/make_spine.py` imports `generate_tdr_upload_script.py`'s LaTeX
   parser rather than repeating it, so the spine and the TDR submission cannot
   disagree about the title, the author, or the date. Values are run through
