@@ -188,12 +188,16 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   degree, the title in both languages, the author in both, the advisor, the
   date — so a change to `\makecover`'s order is a change to `read_spine_text`.
   The English school block is told apart by being set smaller than the degree
-  line, the author by sitting two lines above the advisor, and only the title
-  has to be told from its English twin by being *mostly* Chinese — an English
-  title quoting a Chinese term is still the English one. The advisor is the
-  *last* 指導教授 line, since a title may begin with those characters. A title
-  that wraps is rejoined, with a space only where the break fell between two
-  Latin words.
+  line; what is left at the degree's own size is read as four runs of one
+  language — the title, the title in English, the author, the author in
+  English — because any of them may wrap, so none can be counted in lines.
+  The advisor is the *last* 指導教授 line, since a title may begin with those
+  characters, and only the title has to be told from its English twin by
+  being *mostly* Chinese: an English title quoting a Chinese term is still
+  the English one. The heading wraps too — 公共衛生學院's own
+  衛生福利部暨國立臺灣大學傳染病防治研究及教育中心 does not fit one line at
+  18 pt — so it is rejoined before `split_heading` sees it. Every rejoin puts
+  a space in only where the break fell between two Latin words.
 - The cover prints the university, the college and the institute as one line
   and the spine sets only the first and the last, so `split_heading` looks the
   college up in `ntu-academic-units.tex` and falls back to the 大學/學院

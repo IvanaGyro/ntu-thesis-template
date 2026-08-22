@@ -428,34 +428,43 @@ def read_spine_text(cover: Cover, root: Path) -> SpineText:
         )
     # The school's English name is set smaller than the degree; what is left
     # at the degree's own size is the title, the title in English, and the
-    # author in both.
+    # author in both. Any of the four may run to more than one line, so they
+    # are taken as runs of one language rather than counted.
     body = [
         line for line in lines[degree + 1 : advisor] if line.size_pt >= lines[degree].size_pt
     ]
-    if len(body) < 4:
+    runs = [
+        list(run)
+        for _, run in itertools.groupby(body, key=lambda line: line.chinese)
+    ]
+    if len(runs) < 4 or runs[-1][0].chinese or not runs[-2][0].chinese:
         raise CollectionError(
-            "The cover does not print a title and an author in both languages "
-            "between its degree and its advisor, so the spine cannot read it."
+            "The cover does not print a title and an author, each in Chinese and "
+            "then in English, between its degree and its advisor, so the spine "
+            "cannot read it."
         )
-    titles = body[:-2]
-    chinese = list(itertools.takewhile(lambda line: line.chinese, titles))
-    if not chinese or len(chinese) == len(titles):
+    # What is left once the author and the English title are taken off the end
+    # is the Chinese title, however many lines and languages it runs to.
+    written = [line for run in runs[:-3] for line in run]
+    if not written:
         raise CollectionError(
-            "The cover's title does not read as a Chinese one followed by an "
-            "English one, so the spine cannot tell which is which."
+            "The cover prints no Chinese title above its English one, so the "
+            "spine has nothing to letter."
         )
     printed = [found for found in (COVER_DATE.search(line.text) for line in lines) if found]
     if not printed:
         raise CollectionError("The cover prints no 中華民國 date for the spine to carry.")
 
-    university, institute = split_heading(lines[0].text, root)
+    # The heading may run to more than one line too, and splits only once whole.
+    university, institute = split_heading(
+        join_wrapped([line.text for line in lines[:degree]]), root
+    )
     return SpineText(
         university=university,
         institute=institute,
         degree=lines[degree].text,
-        title=collapse_spaces(join_wrapped([line.text for line in chinese])),
-        # Two lines above the advisor: the author, then the author in English.
-        author=collapse_spaces(body[-2].text),
+        title=collapse_spaces(join_wrapped([line.text for line in written])),
+        author=collapse_spaces(join_wrapped([line.text for line in runs[-2]])),
         # The last date on the page: a title may carry one of its own, above it.
         roc_year=int(printed[-1].group(1)),
         month=int(printed[-1].group(2)),
