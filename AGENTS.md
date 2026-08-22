@@ -22,6 +22,10 @@ pixi run figures   # regenerate figures/example-*.pdf (not part of build)
 pixi run spine     # write the 書側 artwork from main.pdf (not part of build)
 ```
 
+`spine` also needs LibreOffice on `PATH`: the ODT is the artwork and the PDF is
+LibreOffice's rendering of it. It is not a conda package, so `pixi` cannot
+install it (`apt install libreoffice-writer`, or `--soffice PATH`).
+
 TinyTeX installs under `~/.cache/ntu-thesis-template/pytinytex` (override with
 `NTU_THESIS_TINYTEX_ROOT`). Keep it outside the repository: `minted` v3's
 `latexrestricted` rejects executables located below the document working
@@ -145,130 +149,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   darkens page `i` alone. Verify by rendering page `i` and a body page and
   differencing each against a `watermark=false` build; both seals must reach
   the same peak ink.
-- `scripts/make_spine.py` lays the spine out from `LAYOUT`, a table of row
-  heights measured off NTU's official 書側 form, and both outputs read that one
-  table: the ODT builds the rows, the PDF places baselines inside them. Change
-  the table, never one output alone. The reference form positions its two
-  heading columns with absolutely placed drawing frames; those became three
-  ordinary rows (0.3942 + 0.9450 + 0.3143 = the form's 1.6535 in row), which
-  keeps every other row where the form has it. The rows stop 33.98 pt short of
-  the foot of the page, as the form's own table does, and the cover-aligned
-  layout stops there too rather than filling the sheet — an office suite's own
-  rounding would otherwise have nowhere to go but a second page.
-- A vertical CJK line hangs each character from the top of a one-em slot, so
-  the first baseline sits one ascent below where the line starts. Fonts without
-  that behaviour (標楷體 among them) make LibreOffice draw the ink one ascent
-  higher, above its own row — the offset visible between the shipped 全字庫
-  faces and NTU's sample PDFs. The row geometry is identical either way.
-- LibreOffice silently substitutes an embedded font that is not marked
-  installable, which is why `embeddable_font` clears `OS/2.fsType` on the
-  subset — TW-Kai ships as preview-and-print only. It does that **only** for
-  the two files in `SHIPPED_FILES`, whose licences (政府資料開放授權條款-1.0 /
-  OFL-1.1) permit a modified version. `redistributed` decides that by file and
-  not by name — a print-only face of the user's own that answers to `TW-Kai-98_1`
-  is not covered by 全字庫's licence, and relabelling it would grant a permission
-  nobody gave — while the identity marks let the same 全字庫 file installed
-  elsewhere on the machine still be recognised as itself. Such a face is
-  carried by the PDF, which is what preview-and-print covers, and merely named
-  in the ODT. Two fsType bits are refused outright instead: 0x0002, which
-  forbids embedding, and 0x0200, which permits only the face's bitmaps to
-  travel — both outputs carry outlines.
-- The class stamps a linked `doi:` line a centimetre from the foot of page
-  one. `read_cover` skips a line that both says `doi:` and sits inside a link,
-  or the spine is stretched to the stamp instead of to the cover's last line —
-  a 68 pt error the `--with-cover` proof makes obvious. Both halves are
-  needed: a title may carry a link of its own, and one may begin with `doi`.
-- Every page of `main.pdf` is an interior sheet, page one included: the card
-  cover is printed from `pixi run cover`, which reproduces page one rather
-  than replacing it. `PAPERBACK_BINDING_MM` pays for that card on top.
-- Which characters a vertical line stands upright is UTR#50's
-  Vertical_Orientation, and East Asian width is not a usable stand-in for it:
-  × ± § ※ stand up while ° → ≤ ∑ — turn, though all of them are
-  ambiguous-width symbols, and LibreOffice lays the ODT out by the property
-  rather than the width. `UPRIGHT_RANGES` carries it — the U and Tu values of
-  `VerticalOrientation-17.txt`, plus Tr where the character is wide, since a
-  CJK face gives those a vertical form and LibreOffice draws that upright,
-  plus the wide letters added to Unicode since that file's repertoire. The
-  table was checked character by character against what LibreOffice actually
-  draws, which is also how the width heuristic it replaced was found to be
-  wrong for 37 of 84 symbols — the `°` of `30 °C` among them, worth 2 mm on
-  the page.
-- The vertical forms folded into the PDF's copy of the face are only for the
-  characters that stand upright. A turned run is drawn from the horizontal
-  form and rotated, so giving one of those a vertical form turns it twice —
-  and the date is drawn across from that same copy, sharing its characters
-  with the title.
-- The spine reads every word off page one of `main.pdf`, not out of
-  `ntusetup.tex`: the class has already typeset it, so no LaTeX is left to
-  misread and the spine cannot drift from the cover it is bound with. The
-  cover's fixed line order is what identifies each field — the school, the
-  degree, the title in both languages, the author in both, the advisor, the
-  date — so a change to `\makecover`'s order is a change to `read_spine_text`.
-  The English school block is told apart by being set smaller than the degree
-  line; what is left at the degree's own size is read as four runs of one
-  language — the title, the title in English, the author, the author in
-  English — because any of them may wrap, so none can be counted in lines.
-  The advisor is the *last* 指導教授 line, since a title may begin with those
-  characters, and only the title has to be told from its English twin by
-  being *mostly* Chinese: an English title quoting a Chinese term is still
-  the English one. The title is the *first* such run and no more — an English
-  title that wraps around a Chinese quotation would otherwise be swallowed
-  into it — and a cover whose two titles do not read as one Chinese block
-  then one English block is warned about rather than guessed at. The heading
-  wraps too — 公共衛生學院's own 衛生福利部暨國立臺灣大學傳染病防治研究及教育中心
-  does not fit one line at 18 pt — so it is rejoined before `split_heading`
-  sees it. A rejoin puts a
-  space back wherever the break fell inside horizontal text — between two
-  characters a vertical line turns on its side, `é` and `Ω` and the comma and
-  the colon alike, since the break falls at the space beside punctuation as
-  readily as between two letters. CJK breaks anywhere and elides nothing, so
-  those halves are butted together; a trailing hyphen stands in for the break
-  rather than for a space, so it is butted together too.
-- The file the spine is lettered from is the one the cover was set from, not
-  merely one answering to the same name: an older revision left beside the
-  current one, or an installed face carrying a shipped face's names, would
-  otherwise supply outlines, metrics and embedding rights the thesis was
-  never set in, and every name would still agree. The PDF's own copy settles
-  it. That copy is subset and carries no cmap, so nothing in it can be looked
-  up by character; what subsetting leaves alone is the face's account of
-  itself — the em, the revision, the day it was made, and the unique
-  identifier and version in its name table — and only the marks both sides
-  carry are compared, a record the subsetter dropped being no evidence of a
-  different face. A build whose face is nowhere on the machine is lettered
-  from the nearest namesake with a warning, never silently.
-- The cover prints the university, the college and the institute as one line
-  and the spine sets only the first and the last, so `split_heading` looks the
-  college up in `ntu-academic-units.tex` and falls back to the 大學/學院
-  suffixes when a name is not on the list.
-- The spine's rows are stretched so its text spans the same extent as the
-  cover's, measured off page one of `main.pdf`. Only the gaps and the depth
-  the heading justifies across take the stretch; the point sizes stay the
-  form's. Because the table then ends where the cover's last line does, it
-  always fits the sheet — a uniform scale of the rows does not, and pushes the
-  date onto a second page.
-- The year and month are read from the cover's 「中華民國 NNN 年 M 月」, the
-  *last* such line on the page: a title may carry a 中華民國 date of its own,
-  set above it.
-- Every vertical line is fitted with `LINE_SLACK_EM` — one character — to
-  spare, and `block_room` gives it that room. An exact fit is not a safe one:
-  the PDF sets a line in one column, and a reader whose metrics make it a hair
-  longer breaks it into a second column and lays the whole block out
-  differently. A Latin space inside a CJK line is enough to do it, and
-  LibreOffice ignores `fo:wrap-option` on a Writer cell, so the room has to be
-  left rather than the wrap forbidden. `block_room` reports half of that slack
-  as the block's inset, since a centred line sits in the middle of the room it
-  is given; reporting zero puts every gap in the aligned layout out of
-  proportion.
-- A vertical line is not horizontal text turned on its side: wide characters
-  stay upright, Latin runs turn a quarter turn and advance at their own width,
-  and brackets and punctuation take the shapes the font's `vert` feature
-  gives. LibreOffice applies `vert` itself, so the ODT keeps the subset whole;
-  the PDF carries a second copy with those substitutions folded into its cmap,
-  which is why `layout_features = ["*"]` has to survive subsetting.
-- 標楷體 sets `post.isFixedPitch`, though its ideographs are a full em and its
-  digits half of one. MuPDF believes it and writes `/W [0 65535 260]`, piling
-  the year's digits on top of each other; `drawn_face` clears the flag on the
-  PDF's copy.
+- The spine reads its text off page one of `main.pdf` rather than out of
+  `ntusetup.tex`, and identifies each field by the cover's fixed line order.
+  A change to `\makecover` — what it prints, or the order it prints it in —
+  is a change to `read_spine_text` in `scripts/make_spine.py`.
 - NTU's format rules (fonts, 12 pt, margins 3/2/3/3, spacing, cover sizes) are
   quoted with their source in `README.md`. Verify against
   <https://www.lib.ntu.edu.tw/doc/cl/THESISSAMPLE.doc> before changing layout.

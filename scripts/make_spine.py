@@ -13,14 +13,17 @@ Four files come out, two per binding:
 
 * the ODT, the editable master a print shop can open and adjust, with the
   thesis's own Chinese face embedded so it sets correctly on their machine;
-* the PDF, drawn here rather than converted, so that producing it needs
-  nothing beyond the packages `pixi run build` already installs.
+* the PDF, which LibreOffice exports from that ODT. The ODT is the only
+  artwork; the PDF is a rendering of it, so the sheet a bindery prints and
+  the file it can edit cannot say different things or set them differently.
+  LibreOffice therefore has to be installed -- it is not a Python package,
+  and `pixi` cannot fetch it.
 
-Both are laid out from one table of measurements taken off NTU's official
-spine form, so the two agree by construction. The text runs top to bottom in
-真正直書 (true vertical setting), the way the form has it: the university and
-the institute side by side at the head, then the degree, the title, the
-author, and the ROC year and month at the foot.
+The layout comes from one table of measurements taken off NTU's official
+spine form. The text runs top to bottom in 真正直書 (true vertical setting),
+the way the form has it: the university and the institute side by side at the
+head, then the degree, the title, the author, and the ROC year and month at
+the foot.
 
 Like `cover` and `protect`, this step is deliberately manual; `pixi run build`
 never calls it.
@@ -36,8 +39,10 @@ import logging
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import unicodedata
 import zipfile
 from collections.abc import Iterator
@@ -163,11 +168,11 @@ HEADING_COLUMN_PITCH = 1.01
 DATE_LINE_PITCH = 15.0 / 14.0
 
 # One character's worth of room left at the foot of every vertical line. An
-# exact fit is not a safe one: the PDF sets a line in one column, and a reader
-# whose metrics make it a hair longer -- a Latin space inside a CJK line is
-# enough -- would break it into a second column and lay the whole block out
-# differently. LibreOffice ignores fo:wrap-option on a Writer cell, so the
-# room has to be left rather than the wrap forbidden.
+# exact fit is not a safe one: the layout puts each line in a column of its
+# own, and a reader whose metrics make it a hair longer -- a Latin space
+# inside a CJK line is enough -- would break it into a second column and lay
+# the whole block out differently. LibreOffice ignores fo:wrap-option on a
+# Writer cell, so the room has to be left rather than the wrap forbidden.
 LINE_SLACK_EM = 1.0
 
 # How close to the edge of the spine a character may set. The official 8 mm
@@ -209,7 +214,8 @@ COVER_ADVISOR = "指導教授"
 COVER_OVERLAY = re.compile(r"^doi:")
 
 # 校名、學院、系所印成一行；沒有學院清單可對時，用「大學」「學院」的字尾拆開。
-HEADING = re.compile(r"^(?P<university>.*?大學)(?:.*?學院)?(?P<institute>.+)$")
+UNIVERSITY = re.compile(r".*?大學")
+HEADING = re.compile(rf"^(?P<university>{UNIVERSITY.pattern})(?:.*?學院)?(?P<institute>.+)$")
 
 # Anything at or above this code point is CJK rather than Latin, which is
 # enough to tell the cover's two languages apart.
@@ -253,13 +259,6 @@ class SpineText:
 
     def characters(self) -> str:
         joined = "".join("".join(self.block(name)) for name in NOMINAL_SIZE_PT)
-        return "".join(sorted(set(joined)))
-
-    def vertical_characters(self) -> str:
-        """Everything set down a column; the date alone runs across."""
-        joined = "".join(
-            "".join(self.block(name)) for name in NOMINAL_SIZE_PT if name != "date"
-        )
         return "".join(sorted(set(joined)))
 
 
@@ -312,13 +311,21 @@ def read_cover(document: pymupdf.Document) -> Cover:
     page. It is an overlay rather than part of the cover's text, and measuring
     down to it would stretch the spine past the cover's last line, so whatever
     sits inside a link is left out.
+
+    Each line is composed as it is read. A PDF may spell an accented letter or
+    a kana with its mark as a separate character, and a vertical line gives a
+    character a slot of its own: `か` followed by U+3099 would be measured two
+    slots deep where LibreOffice sets it one, and the block sized from that
+    would come out short.
     """
     page = document[0]
     overlays = [pymupdf.Rect(link["from"]) for link in page.get_links()]
     font, lines = "", []
     for block in page.get_text("dict")["blocks"]:
         for line in block.get("lines", []):
-            text = "".join(span["text"] for span in line["spans"]).strip()
+            text = unicodedata.normalize(
+                "NFC", "".join(span["text"] for span in line["spans"])
+            ).strip()
             if not text:
                 continue
             box = pymupdf.Rect(line["bbox"])
@@ -373,9 +380,17 @@ def embedded_face(document: pymupdf.Document, page: pymupdf.Page, name: str) -> 
 def split_heading(heading: str, root: Path) -> tuple[str, str]:
     """Take the university and the institute out of the cover's first line.
 
-    The cover runs the university, the college and the institute together on
-    one line; the spine sets the university and the institute and leaves the
-    college out. NTU's own list of colleges says where each one ends.
+    The form's head has two columns and the cover has one line, so the line
+    has to be divided: the university goes in the right-hand column, the
+    institute in the left, and the college the cover names between them is
+    what the form leaves out. NTU's own list of colleges says where each one
+    ends -- 共同教育中心 is a college whose name does not end in 學院, so the
+    suffix below cannot find every boundary on its own.
+
+    A listed college counts only where the cover puts it, straight after the
+    university: 醫學院 also occurs inside the name of an institute, and a
+    college not on the list should reach the suffix rule rather than let a
+    match further along the line swallow it.
     """
     try:
         colleges, _ = parse_academic_units(root / "ntu-academic-units.tex")
@@ -383,8 +398,11 @@ def split_heading(heading: str, root: Path) -> tuple[str, str]:
     except (CollectionError, OSError):
         names = []
     for college in names:
-        university, found, institute = heading.partition(college)
-        if found and university and institute:
+        place = heading.find(college)
+        if place <= 0:
+            continue
+        university, institute = heading[:place], heading[place + len(college) :]
+        if institute and UNIVERSITY.fullmatch(university):
             return university, institute
     named = HEADING.match(heading)
     if named:
@@ -454,6 +472,10 @@ def read_spine_text(cover: Cover, root: Path) -> SpineText:
     school block is told apart by its size, the author by its place two lines
     above the advisor, and only the title has to be told from its English
     twin by being Chinese.
+
+    That order is `\\makecover`'s, in `ntuthesis.cls`: change what the cover
+    prints, or the order it prints it in, and this is the code that has to
+    change with it.
     """
     lines = cover.lines
     degree = next((i for i, line in enumerate(lines) if COVER_DEGREE.match(line.text)), None)
@@ -716,13 +738,9 @@ def collection_size(path: Path) -> int:
 
 
 # The Chinese faces this template redistributes, named by the files they are.
-# Two things are true of these and of no others: their licences (政府資料開放
-# 授權條款-1.0 or OFL-1.1) permit a modified version, so a subset of them may be
-# written with its embedding rights relaxed; and the two outputs have been
-# checked against them, with LibreOffice setting the ODT within a tenth of a
-# millimetre of where the PDF draws it. Other faces are laid out the same way
-# and print the same from the PDF, but LibreOffice sets some of them -- 標楷體
-# among them -- about one ascent higher on the page.
+# One thing is true of these and of no others: their licences (政府資料開放授權
+# 條款-1.0 or OFL-1.1) permit a modified version, so a subset of them may be
+# written with its embedding rights relaxed and travel inside the ODT.
 SHIPPED_FILES = ("fonts/chinese/TW-Kai-98_1.ttf", "fonts/chinese/TW-Sung-98_1.ttf")
 
 
@@ -764,7 +782,6 @@ class Embedding:
 
     face: bytes
     editable: bool  # may travel inside a document that can be edited
-    subsettable: bool  # may be cut down further
 
 
 def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding:
@@ -774,13 +791,14 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding
     characters. Every name record is kept so that the family name in the ODT
     still resolves to the embedded file.
 
-    Whether the ODT may carry the subset is the second answer. A PDF is a
-    printed page, which `fsType` level 4 allows; an ODT is a document that can
-    be edited, which it does not, and an office suite honours only a face
-    marked installable. The template's own faces may simply be marked so --
-    their licences permit a modified version -- but a face belonging to the
-    user may not be relabelled on their behalf, so the ODT names it and
-    leaves the machine to supply it.
+    Whether the ODT may carry the subset is the second answer. An ODT is a
+    document that can be edited, which `fsType` level 4 does not allow, and an
+    office suite honours only a face marked installable -- it substitutes
+    something else, silently, for one that is not. The template's own faces
+    may simply be marked installable, their licences permitting a modified
+    version; a face belonging to the user may not be relabelled on their
+    behalf, so the ODT names it and LibreOffice sets it from the copy this
+    machine has installed.
     """
     with font.open(lazy=True) as probe:
         rights = probe["OS/2"].fsType
@@ -792,9 +810,9 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding
             "the template."
         )
     if rights & FSTYPE_BITMAP_ONLY:
-        # A spine is lettered at whatever size it takes, and both outputs carry
-        # outlines; a face that allows only its bitmaps to travel cannot be one
-        # of them, whatever else its rights permit.
+        # A spine is lettered at whatever size it takes, and what would travel
+        # inside the ODT is the outlines; a face that allows only its bitmaps
+        # to go cannot go, whatever else its rights permit.
         raise CollectionError(
             f"{font.name} allows only its bitmaps to be embedded, not its outlines, "
             "which is what the spine files carry. Build the thesis with a fontset "
@@ -802,8 +820,9 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding
         )
 
     options = subset.Options()
-    # `vert` has to survive: LibreOffice reads it out of the ODT's copy, and
-    # the PDF folds it into its own.
+    # `vert` has to survive the cut: it is what gives a bracket, a comma or a
+    # full stop the shape it takes down a column rather than across a line,
+    # and LibreOffice reads it out of this copy.
     options.layout_features = ["*"]
     options.name_IDs = ["*"]
     options.name_legacy = True
@@ -826,79 +845,15 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding
     elif not editable:
         logging.warning(
             "%s allows embedding for print but not for editing, and is not one of "
-            "the faces this template may relabel. The PDF carries it; the ODT "
-            "names it instead, so open the ODT on a machine that has it installed.",
+            "the faces this template may relabel, so the ODT names it instead of "
+            "carrying it. Open it on a machine that has the face installed -- "
+            "this one does, which is how the PDF beside it is set in the face.",
             font.name,
         )
     written = io.BytesIO()
     face.save(written)
     face.close()
-    return Embedding(written.getvalue(), editable, not rights & FSTYPE_NO_SUBSETTING)
-
-
-def vertical_substitutions(font: TTFont) -> dict[str, str]:
-    """Each glyph that has a vertical form, mapped to it, per the font's `vert`.
-
-    Vertical CJK does not merely turn the page: a bracket, a comma or a full
-    stop is drawn differently down a column than across a line, and the shape
-    to use lives in the font rather than at a code point of its own.
-    """
-    gsub = font.get("GSUB")
-    if gsub is None:
-        return {}
-    lookups: set[int] = set()
-    for record in gsub.table.FeatureList.FeatureRecord:
-        if record.FeatureTag in ("vert", "vrt2"):
-            lookups.update(record.Feature.LookupListIndex)
-    mapping: dict[str, str] = {}
-    for index in sorted(lookups):
-        for table in gsub.table.LookupList.Lookup[index].SubTable:
-            # A type 7 lookup only wraps the real one.
-            table = getattr(table, "ExtSubTable", table)
-            mapping.update(getattr(table, "mapping", {}))
-    return mapping
-
-
-def drawn_face(font_bytes: bytes, vertical: str) -> bytes:
-    """The copy of the face the PDF draws from, with two corrections.
-
-    The first is the vertical forms. LibreOffice applies `vert` itself when it
-    sets the ODT, but a PDF carries glyphs already chosen, so folding the
-    substitution into this copy's character map is what makes the drawn page
-    agree with the editable one. Only the upright characters take it: what a
-    line turns on its side is drawn from the horizontal form and rotated.
-    The mapping back to Unicode is untouched, so the PDF still reads as what
-    it says.
-
-    The second is `post.isFixedPitch`. 標楷體 sets it, though its ideographs
-    are a full em wide and its digits half of one, and a PDF writer that
-    believes it emits a single width for every glyph -- which sets the year on
-    the spine as three digits piled on top of each other. Clearing the flag
-    costs a font that really is monospaced nothing: its widths are then simply
-    written out, and they all still agree.
-    """
-    face = TTFont(io.BytesIO(font_bytes))
-    mapping = vertical_substitutions(face)
-    # Only the characters that stand up: a turned run is drawn from the
-    # horizontal form and rotated, the way LibreOffice sets it, so folding a
-    # vertical form into one of those would turn it twice. The date is drawn
-    # across from this same copy, and shares its characters with the title.
-    wanted = {ord(character) for character in vertical if upright(character)}
-    turned = 0
-    for table in face["cmap"].tables:
-        for code, name in list(table.cmap.items()):
-            if code in wanted and name in mapping:
-                table.cmap[code] = mapping[name]
-                turned += 1
-    if turned:
-        logging.info("Set %d character(s) in their vertical form.", turned)
-    if face["post"].isFixedPitch:
-        logging.info("%s claims to be monospaced; writing its real widths.", face["name"].getDebugName(1))
-        face["post"].isFixedPitch = 0
-    written = io.BytesIO()
-    face.save(written)
-    face.close()
-    return written.getvalue()
+    return Embedding(written.getvalue(), editable)
 
 
 def missing_characters(font: FontFile, characters: str) -> str:
@@ -1117,15 +1072,6 @@ class Block:
             offset += run.advance * self.size_pt + gap
         return placement
 
-    def centre_pt(self, index: int, width_pt: float) -> float:
-        """Where line `index` sits across the spine.
-
-        Vertical lines stack right to left, so the first line of a block is
-        its rightmost column.
-        """
-        offset = (len(self.lines) - 1) / 2 - index
-        return width_pt / 2 + offset * self.pitch_pt
-
     @property
     def ink_top_pt(self) -> float:
         """The top of the block's first line box, leading excluded.
@@ -1343,96 +1289,97 @@ def lay_out(
 # --------------------------------------------------------------------------
 
 
-def write_pdf(
-    spine: Spine,
-    font: pymupdf.Font,
-    metadata: dict[str, str],
-    target: Path,
-    subsettable: bool = True,
-) -> None:
-    """Draw the spine directly, run by run.
+# LibreOffice's own name for the export that turns a Writer document into a
+# PDF. Naming the filter leaves the suite nothing to guess at: `pdf` alone is
+# ambiguous to a suite that can also draw and calculate.
+PDF_FILTER = "pdf:writer_pdf_Export"
 
-    Converting the ODT would mean an office suite in the toolchain; the
-    placement is already computed, so the text is simply set where the layout
-    puts it. Upright characters are centred in their column; a turned run is
-    drawn horizontally and rotated a quarter turn clockwise about its own
-    start, which is how a vertical line sets Latin.
+# The program answers to two names, and on macOS and Windows an ordinary
+# installation puts neither of them on the PATH.
+SOFFICE_NAMES = ("soffice", "libreoffice")
+SOFFICE_PLACES = (
+    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+    r"C:\Program Files\LibreOffice\program\soffice.exe",
+    r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+)
+SOFFICE_TIMEOUT_S = 300
+
+
+def find_soffice(given: str | None = None) -> str:
+    """Where LibreOffice is on this machine.
+
+    Asked before anything is written, so a machine without it hears so
+    instead of being left with an ODT and no PDF beside it.
     """
-    with pymupdf.open() as document:
-        page = document.new_page(width=spine.width_pt, height=PAGE_HEIGHT_PT)
-        upright_text = pymupdf.TextWriter(page.rect)
-        turned: list[tuple[pymupdf.TextWriter, pymupdf.Point]] = []
-        for block in spine.blocks:
-            if not block.vertical:
-                draw_across(block, spine.width_pt, font, upright_text)
-                continue
-            for index in range(len(block.lines)):
-                centre = block.centre_pt(index, spine.width_pt)
-                for run, offset in block.placed(index):
-                    if run.turned:
-                        turned.append(draw_turned(run, offset, centre, block, font, page))
-                        continue
-                    for position, character in enumerate(run.text):
-                        advance = font.glyph_advance(ord(character)) * block.size_pt
-                        upright_text.append(
-                            pymupdf.Point(
-                                centre - advance / 2,
-                                offset + position * block.size_pt + block.ascent * block.size_pt,
-                            ),
-                            character,
-                            font=font,
-                            fontsize=block.size_pt,
-                        )
-        upright_text.write_text(page)
-        for writer, pivot in turned:
-            writer.write_text(page, morph=(pivot, pymupdf.Matrix(-90)))
-        document.set_metadata(metadata)
-        if subsettable:
-            # The buffer is already cut to the spine's characters; this trims
-            # whatever the layout tables dragged along with them.
-            document.subset_fonts()
-        document.save(target, garbage=4, deflate=True)
+    if given:
+        found = shutil.which(given)
+        if not found and not Path(given).is_file():
+            raise CollectionError(f"No LibreOffice to run at {given}.")
+        return found or given
+    for name in SOFFICE_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+    for place in SOFFICE_PLACES:
+        if Path(place).is_file():
+            return place
+    raise CollectionError(
+        "The spine's PDF is LibreOffice's own rendering of the ODT, and no "
+        "LibreOffice was found. Install it -- `apt install libreoffice-writer`, "
+        "`brew install --cask libreoffice`, or <https://www.libreoffice.org/> -- "
+        "or say where it is with --soffice. It is not a Python package, so "
+        "`pixi` cannot fetch it."
+    )
+
+
+def convert_odt(odt: Path, target: Path, soffice: str) -> None:
+    """Export the ODT to PDF, so that the two files cannot say different things.
+
+    Rendering the artwork twice -- once for the office suite and once for a
+    PDF writer -- means two typesetters and two chances to disagree about how
+    a vertical line sets a bracket, a Latin word or a combining mark. There is
+    one document here, and the PDF is what LibreOffice makes of it.
+
+    It runs against a profile of its own in a directory thrown away
+    afterwards. A shared profile is a single lock: a run would otherwise
+    disturb the settings of, or be refused outright by, the copy of
+    LibreOffice the user already has open.
+    """
+    with tempfile.TemporaryDirectory(prefix="ntu-spine-") as scratch:
+        room = Path(scratch)
+        command = [
+            soffice,
+            f"-env:UserInstallation={(room / 'profile').as_uri()}",
+            "--headless",
+            "--norestore",
+            "--invisible",
+            "--convert-to",
+            PDF_FILTER,
+            "--outdir",
+            str(room),
+            str(odt),
+        ]
+        try:
+            finished = subprocess.run(
+                command, capture_output=True, text=True, timeout=SOFFICE_TIMEOUT_S, check=False
+            )
+        except subprocess.TimeoutExpired:
+            raise CollectionError(
+                f"LibreOffice took longer than {SOFFICE_TIMEOUT_S}s over {odt.name}."
+            ) from None
+        written = room / f"{odt.stem}.pdf"
+        if finished.returncode or not written.is_file():
+            # A document it cannot convert leaves LibreOffice's exit status at
+            # zero, so the file it was asked for is what says whether it worked.
+            said = (finished.stderr.strip() or finished.stdout.strip()).splitlines()
+            raise CollectionError(
+                f"LibreOffice could not turn {odt.name} into a PDF"
+                + (f": {said[-1]}" if said else ".")
+            )
+        # Across devices, since the scratch directory need not be on the same
+        # filesystem as the thesis.
+        shutil.move(str(written), str(target))
     logging.info("Wrote %s", target)
-
-
-def draw_across(
-    block: Block, width_pt: float, font: pymupdf.Font, writer: pymupdf.TextWriter
-) -> None:
-    """Set the one horizontal block, its lines centred across the spine."""
-    # Half the leading above the line and half below, the way a line box is built.
-    leading = block.pitch_pt - block.size_pt * block.extent
-    top = block.top_pt + (block.height_pt - len(block.lines) * block.pitch_pt) / 2
-    for index, line in enumerate(block.lines):
-        baseline = top + index * block.pitch_pt + leading / 2 + font.ascender * block.size_pt
-        length = font.text_length(line.text, fontsize=block.size_pt)
-        writer.append(
-            pymupdf.Point((width_pt - length) / 2, baseline),
-            line.text,
-            font=font,
-            fontsize=block.size_pt,
-        )
-
-
-def draw_turned(
-    run: Run,
-    offset: float,
-    centre: float,
-    block: Block,
-    font: pymupdf.Font,
-    page: pymupdf.Page,
-) -> tuple[pymupdf.TextWriter, pymupdf.Point]:
-    """Queue one Latin run, laid out horizontally for a quarter turn clockwise.
-
-    Rotating about the pivot carries the run down its column, so it is written
-    left to right from there and the rotation does the rest. A quarter turn
-    clockwise puts what was above the baseline to the right of it, so the
-    baseline sits left of the column's centre line by as much as the face
-    leaves above it, less half an em.
-    """
-    pivot = pymupdf.Point(centre - block.size_pt * (font.ascender - 0.5), offset)
-    writer = pymupdf.TextWriter(page.rect)
-    writer.append(pivot, run.text, font=font, fontsize=block.size_pt)
-    return writer, pivot
 
 
 # --------------------------------------------------------------------------
@@ -1539,9 +1486,9 @@ def automatic_styles(spine: Spine, family: str) -> str:
         '<style:style style:name="Upright" style:family="table-cell">'
         '<style:table-cell-properties fo:padding="0pt" fo:border="none" '
         'style:vertical-align="middle"/></style:style>',
-        # no-wrap matters: the PDF sets each line in one column, and a reader
-        # whose metrics make a line a hair too long would otherwise break it
-        # into a second one and lay the whole block out differently.
+        # no-wrap matters: the layout gives each line a column of its own, and
+        # a reader whose metrics make a line a hair too long would otherwise
+        # break it into a second one and lay the whole block out differently.
         '<style:style style:name="Sideways" style:family="table-cell">'
         '<style:table-cell-properties fo:padding="0pt" fo:border="none" '
         'style:vertical-align="middle" style:writing-mode="tb-rl" '
@@ -1646,6 +1593,17 @@ def styles_xml(width_pt: float, family: str, font_path: str | None, flavour: str
 
 
 def meta_xml(metadata: dict[str, str]) -> str:
+    """What the document says about itself, and what the PDF inherits.
+
+    The exported PDF takes its author from meta:initial-creator and its
+    keywords from meta:keyword, one element each; dc:description is the
+    document's comments and goes nowhere near them.
+    """
+    keywords = "".join(
+        f"<meta:keyword>{escape(keyword)}</meta:keyword>"
+        for keyword in metadata["keywords"].split("; ")
+        if keyword
+    )
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<office:document-meta xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
@@ -1653,7 +1611,9 @@ def meta_xml(metadata: dict[str, str]) -> str:
         'xmlns:dc="http://purl.org/dc/elements/1.1/" office:version="1.3"><office:meta>'
         f"<dc:title>{escape(metadata['title'])}</dc:title>"
         f"<dc:subject>{escape(metadata['subject'])}</dc:subject>"
-        f"<dc:description>{escape(metadata['keywords'])}</dc:description>"
+        f"<meta:initial-creator>{escape(metadata['author'])}</meta:initial-creator>"
+        f"<dc:creator>{escape(metadata['author'])}</dc:creator>"
+        f"{keywords}"
         f"<meta:generator>{escape(metadata['producer'])}</meta:generator>"
         "</office:meta></office:document-meta>"
     )
@@ -1732,58 +1692,9 @@ def spine_metadata(text: SpineText, binding: Binding, thickness: Thickness) -> d
         "title": f"{text.university}{text.degree}書側（{binding.name_zh}）",
         "author": text.author,
         "subject": f"{text.university}{text.institute}{text.degree}書側",
-        "keywords": f"{binding.name_zh}書背寬 {thickness.width_mm:g} mm",
-        "creator": "scripts/make_spine.py",
+        "keywords": f"{binding.name_zh}; 書背寬 {thickness.width_mm:g} mm",
         "producer": "scripts/make_spine.py",
     }
-
-
-def verify(
-    odt: Path, pdf: Path, spine: Spine, names: tuple[str, ...], embedded: bool
-) -> None:
-    """Refuse to report success until both files hold what was asked for."""
-    expected = "".join(line for block in spine.blocks for line in block.texts)
-    with pymupdf.open(pdf) as document:
-        if document.page_count != 1:
-            raise CollectionError(f"{pdf.name} holds {document.page_count} pages, not one.")
-        page = document[0]
-        if abs(page.rect.width - spine.width_pt) > 0.01:
-            raise CollectionError(
-                f"{pdf.name} is {page.rect.width:.2f}pt wide, not {spine.width_pt:.2f}pt."
-            )
-        if abs(page.rect.height - PAGE_HEIGHT_PT) > 0.01:
-            raise CollectionError(f"{pdf.name} is not as tall as the thesis page.")
-        # One face, though a turned run refers to it under a name of its own,
-        # so it is the distinct font objects that have to come to one. A PDF
-        # writer names an embedded face by whichever of its names it prefers,
-        # style included -- the family, the full name, or the PostScript one --
-        # so any of them appearing inside that is enough.
-        family = names[0]
-        fonts = {font[0]: font[3] for font in page.get_fonts(full=True)}
-        drawn_in = [reduced(re.sub(r"^[A-Z]{6}\+", "", name)) for name in fonts.values()]
-        if len(fonts) != 1 or not any(reduced(name) in drawn_in[0] for name in names):
-            raise CollectionError(f"{pdf.name} does not set the spine in {family} alone.")
-        if not document.extract_font(next(iter(fonts)))[3]:
-            raise CollectionError(f"{pdf.name} does not embed {family}.")
-        printed = re.sub(r"\s", "", page.get_text())
-        if sorted(printed) != sorted(re.sub(r"\s", "", expected)):
-            raise CollectionError(f"{pdf.name} does not print the spine text.")
-
-    with zipfile.ZipFile(odt) as archive:
-        names = archive.namelist()
-        if names[0] != "mimetype" or archive.getinfo("mimetype").compress_type != zipfile.ZIP_STORED:
-            raise CollectionError(f"{odt.name} does not open with an unstored mimetype.")
-        content = archive.read("content.xml").decode("utf-8")
-        font_entries = [name for name in names if name.startswith("Fonts/")]
-        if embedded and (len(font_entries) != 1 or not archive.read(font_entries[0])):
-            raise CollectionError(f"{odt.name} does not embed {family}.")
-        if font_entries and font_entries[0] not in content:
-            raise CollectionError(f"{odt.name} does not point its styles at the embedded font.")
-        if quoteattr(family) not in content:
-            raise CollectionError(f"{odt.name} does not name {family}.")
-        for character in set(expected) - set(" 　"):
-            if escape(character) not in content:
-                raise CollectionError(f"{odt.name} is missing {character!r}.")
 
 
 def write_proof(spine_pdf: Path, thesis: Path, target: Path) -> None:
@@ -1849,6 +1760,7 @@ def build(args: argparse.Namespace) -> None:
     source = args.input.resolve()
     if not source.is_file():
         raise CollectionError(f"No such PDF: {source}. Run `pixi run build` first.")
+    soffice = find_soffice(args.soffice)
     with pymupdf.open(source) as document:
         if document.needs_pass:
             raise CollectionError(
@@ -1867,19 +1779,23 @@ def build(args: argparse.Namespace) -> None:
 
     shipped = redistributed(font_file, PROJECT_ROOT)
     if not shipped:
+        # Where the first character of a vertical line sits is the face's own
+        # doing: one that declares no vertical metrics -- 標楷體 is one -- has
+        # LibreOffice hang its column about an ascent higher than the row the
+        # layout gives it, and the alignment with the cover moves with it.
         logging.warning(
-            "%s is not one of the faces this template ships. Both files are laid "
-            "out alike, but LibreOffice sets some faces' vertical lines about an "
-            "ascent higher than the PDF draws them, so take the PDF as the one "
-            "to print.",
+            "%s is not one of the faces this template ships. The rows are the "
+            "form's either way, but LibreOffice sets some faces' vertical lines "
+            "about an ascent higher within them, so check the artwork against "
+            "the cover before sending it to the bindery.",
             font_file.name,
         )
     embedding = embeddable_font(font_file, text.characters(), shipped)
-    # The ODT keeps the face as it is, because LibreOffice picks the vertical
-    # forms itself; the PDF carries a copy that has already picked them.
-    drawn = drawn_face(embedding.face, text.vertical_characters())
     family = font_names(font_file)[0]
-    ruler = pymupdf.Font(fontbuffer=drawn)
+    # Only to measure with. LibreOffice does the setting, vertical forms and
+    # all; what the layout needs from the face is how much room each line
+    # takes, which is the sum of its advances.
+    ruler = pymupdf.Font(fontbuffer=embedding.face)
     aligned = None if args.no_cover_alignment else cover
 
     duplex = pages >= DUPLEX_THRESHOLD_PAGES if args.sides == "auto" else args.sides == "double"
@@ -1902,8 +1818,7 @@ def build(args: argparse.Namespace) -> None:
         stem = f"{source.stem}-spine-{binding.key}"
         odt, pdf = args.output_dir / f"{stem}.odt", args.output_dir / f"{stem}.pdf"
         write_odt(spine, family, embedding.face if embedding.editable else None, metadata, odt)
-        write_pdf(spine, ruler, metadata, pdf, embedding.subsettable)
-        verify(odt, pdf, spine, font_names(font_file), embedding.editable)
+        convert_odt(odt, pdf, soffice)
         written = [odt, pdf]
         if args.with_cover:
             proof = args.output_dir / f"{stem}-with-cover.pdf"
@@ -1955,6 +1870,13 @@ def arguments() -> argparse.ArgumentParser:
             "the 平裝 copy's own measured thickness in mm, used instead of the "
             "computed one; 精裝 is always this plus its boards, so measure the "
             "paperback even when writing the hardcover"
+        ),
+    )
+    parser.add_argument(
+        "--soffice", metavar="PATH",
+        help=(
+            "the LibreOffice that renders the ODT into the PDF (default: "
+            "whichever is on the PATH, or an ordinary macOS or Windows install)"
         ),
     )
     parser.add_argument(
