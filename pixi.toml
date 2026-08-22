@@ -17,6 +17,7 @@ requests = ">=2.32,<3"
 openpyxl = ">=3.1,<4"
 matplotlib = ">=3.8,<4"
 fonttools = ">=4.50,<5"
+uharfbuzz = ">=0.56,<1"
 numpy = ">=1.26,<3"
 
 [tasks]

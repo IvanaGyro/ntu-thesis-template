@@ -19,12 +19,8 @@ pixi run setup     # install TeX packages without building
 pixi run doctor    # inspect the installation
 pixi run clean     # then rebuild, for stale-state problems
 pixi run figures   # regenerate figures/example-*.pdf (not part of build)
-pixi run spine     # write the 書側 artwork from main.pdf (not part of build)
+pixi run spine     # write the 書側 artwork (not part of build)
 ```
-
-`spine` also needs LibreOffice on `PATH`: the ODT is the artwork and the PDF is
-LibreOffice's rendering of it. It is not a conda package, so `pixi` cannot
-install it (`apt install libreoffice-writer`, or `--soffice PATH`).
 
 TinyTeX installs under `~/.cache/ntu-thesis-template/pytinytex` (override with
 `NTU_THESIS_TINYTEX_ROOT`). Keep it outside the repository: `minted` v3's
@@ -60,7 +56,8 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   `scripts/make_example_figures.py`.
 - `scripts/` — `tex_toolchain.py` (TinyTeX), `protect_pdf.py` (submission
   locking), `extract_cover.py` (cover-page extraction), `make_spine.py` (書側
-  artwork), `make_example_figures.py`.
+  artwork), `thesis_metadata.py` (main.tex and ntusetup.tex, shared with
+  `generate_tdr_upload_script.py`), `make_example_figures.py`.
 - `generate_tdr_upload_script.py`, `tdr_upload_template.js` — NTU TDR form
   filler.
 
@@ -149,10 +146,14 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   darkens page `i` alone. Verify by rendering page `i` and a body page and
   differencing each against a `watermark=false` build; both seals must reach
   the same peak ink.
-- The spine reads its text off page one of `main.pdf` rather than out of
-  `ntusetup.tex`, and identifies each field by the cover's fixed line order.
-  A change to `\makecover` — what it prints, or the order it prints it in —
-  is a change to `read_spine_text` in `scripts/make_spine.py`.
+- `scripts/thesis_metadata.py` is the one reader of `main.tex` and
+  `ntusetup.tex`; the spine and the TDR filler both go through it, so a change
+  to how a value is written is a change in one place.
+- The spine stretches its rows between two hard-coded points, `COVER_TOP_PT`
+  and `COVER_BOTTOM_PT`, where `\makecover`'s fixed 3 cm margins and its
+  `\vfill`s put the cover's first and last lines. Changing
+  `\ntu@geometry@cover`, or the cover's 18 pt on 27 pt body, changes those two
+  numbers in `scripts/make_spine.py`.
 - NTU's format rules (fonts, 12 pt, margins 3/2/3/3, spacing, cover sizes) are
   quoted with their source in `README.md`. Verify against
   <https://www.lib.ntu.edu.tw/doc/cl/THESISSAMPLE.doc> before changing layout.

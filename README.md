@@ -208,28 +208,16 @@ writes an editable ODT and a print-ready PDF for each binding:
 
 ```bash
 pixi run spine                          # main.pdf -> main-spine-{paperback,hardcover}.{odt,pdf}
-pixi run spine -- --with-cover          # also the spine joined to the cover, to check against
 pixi run spine -- --binding hardcover   # one binding only
 pixi run spine -- --paperback-width 8   # a 平裝 thickness you measured yourself, in mm
 ```
 
-The ODT is the artwork and the PDF is LibreOffice's rendering of it, so
-LibreOffice has to be installed: `apt install libreoffice-writer`, `brew
-install --cask libreoffice`, or <https://www.libreoffice.org/>. `pixi` cannot
-fetch it. Add `--soffice PATH` if it is not on your `PATH`.
-
 ### How wide
 
-The width comes from `main.pdf`'s own page count:
-
-| Step | Default | Option |
-| --- | --- | --- |
-| Printed | one side of the sheet below 80 PDF pages, both from there up | `--sides single \| double` |
-| Sheets of paper | one per page, or one per two | |
-| Text block | sheets × 0.10 mm, 80 磅道林紙 at 10 條 | `--paper-thickness MM` |
-| 平裝 | + 1 mm for the cover and the glue | `--binding-allowance MM` |
-| 精裝 | 平裝 + 4 mm of board | |
-| Rounding | up to the next whole millimetre | `--paperback-width MM` overrides the lot |
+The width follows `main.pdf`'s own page count: one sheet per page below 80
+pages and one per two from there up (單面 or 雙面 printing), each sheet 0.10 mm
+of 80 磅道林紙, plus 1 mm for the 平裝 cover and its glue, plus 4 mm of board
+for 精裝, rounded up to the next whole millimetre.
 
 Once you have a bound copy in hand, measure the **平裝** one and pass
 `--paperback-width`; the hardcover always adds its boards to that, so measure
@@ -237,40 +225,28 @@ the paperback even when only the hardcover is being written.
 
 ### What it says
 
-Every word comes off the cover of `main.pdf` — page one, as the class typeset
-it — rather than out of `ntusetup.tex`, so the spine says what the bound book
-says. The cover runs the university, the college and the institute together on
-one line; the spine takes the first and the last of those.
+Every word comes from `main.tex` and `ntusetup.tex` — the degree from the
+class options, the rest from `\ntusetup`, dated today if you leave `date`
+commented out. The layout is the one in NTU's own samples,
+[THESISSAMPLE.doc][zh] and [thesissample_en.doc][en]: 12 pt for the degree,
+14 pt for the title, the author and the date, and the heading at whatever
+size its two columns take. A block that would otherwise run off the artwork
+is set smaller, and the run reports every size it had to shrink.
 
-The layout follows NTU's official spine form: 國立臺灣大學 and the institute
-side by side at the head in 真正直書 (true vertical setting), then 碩士論文 or
-博士論文 at 12 pt, the title and 「作者　撰」 at 14 pt, and the ROC year over the
-month at the foot. Everything but the year is set vertically.
+[zh]: https://www.lib.ntu.edu.tw/doc/cl/THESISSAMPLE.doc
+[en]: https://www.lib.ntu.edu.tw/doc/CL/thesissample_en.doc
 
-The rows are then stretched so the spine's first character starts level with
-the cover's first line and its last finishes level with the cover's last.
-`--no-cover-alignment` keeps the form's own row positions instead. A long
-institute name, a long title or a narrow spine makes a block set smaller
-rather than run off the artwork, and the run reports every size it had to
-shrink.
+The rows are stretched so the spine's first character starts level with the
+cover's first line and its last finishes level with the cover's last.
 
 ### Fonts
 
-Both files carry a subset of the very face `main.pdf` sets Chinese in —
-whichever `fontset` and `cjkfont` in `main.tex` selected, found among the
-shipped fonts or among the ones installed on this machine.
+Both files are set in the very face `main.tex` sets Chinese in: the PDF always
+carries it, and the ODT carries it too unless the face's licence forbids
+embedding in a document that can be edited, in which case the ODT names it and
+the machine that opens it supplies it.
 
-A face that forbids embedding is refused. One the template may not put inside
-an editable document — anything but the 全字庫 faces it ships, whose licences
-allow it — is named in the ODT instead, and LibreOffice sets it from the copy
-installed on this machine: open that ODT somewhere the face is installed. The
-run says which happened.
-
-`pixi run spine -- --with-cover` also writes `<name>-with-cover.pdf`: the
-spine joined to the cover on one sheet, its own width plus the cover's 210 mm
-(a 9 mm spine makes a 219 × 297 mm page), so that reading across the join
-shows at a glance whether the two line up. Like `cover` and `protect`, none of
-this runs as part of `pixi run build`.
+Like `cover` and `protect`, none of this runs as part of `pixi run build`.
 
 ## Submission
 

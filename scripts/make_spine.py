@@ -13,17 +13,19 @@ Four files come out, two per binding:
 
 * the ODT, the editable master a print shop can open and adjust, with the
   thesis's own Chinese face embedded so it sets correctly on their machine;
-* the PDF, which LibreOffice exports from that ODT. The ODT is the only
-  artwork; the PDF is a rendering of it, so the sheet a bindery prints and
-  the file it can edit cannot say different things or set them differently.
-  LibreOffice therefore has to be installed -- it is not a Python package,
-  and `pixi` cannot fetch it.
+* the PDF, drawn here rather than converted, so that writing a spine needs
+  nothing on the machine beyond the packages `pixi` installs.
 
-The layout comes from one table of measurements taken off NTU's official
-spine form. The text runs top to bottom in 真正直書 (true vertical setting),
-the way the form has it: the university and the institute side by side at the
-head, then the degree, the title, the author, and the ROC year and month at
-the foot.
+Both are laid out from one table of measurements taken off NTU's official
+spine form, and both set every character on the glyph HarfBuzz chooses for a
+vertical line, so the two agree by construction. The text runs top to bottom
+in 真正直書 (true vertical setting), the way the form has it: the university
+and the institute side by side at the head, then the degree, the title, the
+author, and the ROC year and month at the foot.
+
+What it says comes from main.tex and ntusetup.tex -- the thesis's own source,
+read with the same parser the TDR upload filler uses. The built PDF is opened
+only to be counted.
 
 Like `cover` and `protect`, this step is deliberately manual; `pixi run build`
 never calls it.
@@ -34,23 +36,21 @@ from __future__ import annotations
 import argparse
 import bisect
 import io
-import itertools
 import logging
 import math
 import os
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 import unicodedata
 import zipfile
-from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
 
 import pymupdf
+import uharfbuzz as hb
 from fontTools import subset
 from fontTools.ttLib import TTFont
 
@@ -175,6 +175,17 @@ DATE_LINE_PITCH = 15.0 / 14.0
 # Writer cell, so the room has to be left rather than the wrap forbidden.
 LINE_SLACK_EM = 1.0
 
+# 封面第一行的頂端與最後一行的底端，寫死，因為類別也是寫死的。
+# Where the cover's text starts and ends. \\makecover sets the cover inside a
+# 3 cm margin on a fixed A4 page and spreads it with \\vfill, so its first line
+# begins and its last line ends in the same two places in every thesis: these
+# are those places, measured off a build, and the spine is stretched between
+# them. A change to \\ntu@geometry@cover or to the cover's 18 pt on 27 pt body
+# is a change to these two numbers.
+COVER_TOP_PT = 83.9
+COVER_BOTTOM_PT = 748.2
+COVER_TEXT_HEIGHT_PT = COVER_BOTTOM_PT - COVER_TOP_PT
+
 # How close to the edge of the spine a character may set. The official 8 mm
 # sample leaves about 0.3 mm beside its widest line, the year; a quarter of a
 # millimetre is a shade tighter than that, so a spine as wide as the sample
@@ -184,45 +195,31 @@ SIDE_CLEARANCE_MM = 0.25
 
 
 # --------------------------------------------------------------------------
-# Reading the cover
+# What the spine says
 # --------------------------------------------------------------------------
 #
-# Page one of the built PDF is the cover, and everything the spine letters
-# comes from it. Reading the cover rather than ntusetup.tex means the spine
-# says what the bound book says: the class has already done the typesetting,
-# so no LaTeX is left to misread, and the two cannot drift apart.
-sys.path.insert(0, str(PROJECT_ROOT))
-from generate_tdr_upload_script import (  # noqa: E402
+# main.tex and ntusetup.tex, read with the same parser the TDR filler uses.
+# The source rather than the built cover: \ntusetup holds one value per key,
+# so a title arrives whole instead of broken across the lines typesetting put
+# it on, and the university, the college and the institute arrive apart
+# instead of run together into one line that would have to be divided again.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from thesis_metadata import (  # noqa: E402
     CollectionError,
+    class_options,
     collapse_spaces,
-    parse_academic_units,
+    parse_ntusetup,
 )
-
-# 封面日期行：中華民國 115 年 8 月。
-COVER_DATE = re.compile(r"中華民國\s*(\d+)\s*年\s*(\d+)\s*月")
-
-# 封面第二行：碩士論文／博士論文。
-COVER_DEGREE = re.compile(r"^[碩博]士(?:學位)?論文$")
-
-# 指導教授那一行，在題目與作者之後。
-COVER_ADVISOR = "指導教授"
-
-# 頁尾的 doi: 戳記，不屬於封面的文字。
-# The class's own doi: stamp, which is an overlay rather than a line of the
-# cover. Both halves are needed to name it: a title may carry a link of its
-# own, and one may begin with the word doi.
-COVER_OVERLAY = re.compile(r"^doi:")
-
-# 校名、學院、系所印成一行；沒有學院清單可對時，用「大學」「學院」的字尾拆開。
-UNIVERSITY = re.compile(r".*?大學")
-HEADING = re.compile(rf"^(?P<university>{UNIVERSITY.pattern})(?:.*?學院)?(?P<institute>.+)$")
-
-# Anything at or above this code point is CJK rather than Latin, which is
-# enough to tell the cover's two languages apart.
-CJK_FIRST = 0x2E80
 
 # 「撰」 follows the author's name after an ideographic space, as on the form.
 AUTHOR_SUFFIX = "　撰"
+
+# 書名頁上的學位論文名稱，由 degree 類別選項決定。
+DEGREE_NAMES = {"master": "碩士論文", "doctor": "博士論文"}
+
+# ntusetup.tex 的 date 是 YYYY-MM-DD；留白時類別用今天，這裡也是。
+ISO_DATE = re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})")
+ROC_EPOCH = 1911
 
 
 @dataclass(frozen=True)
@@ -262,294 +259,62 @@ class SpineText:
         return "".join(sorted(set(joined)))
 
 
-@dataclass(frozen=True)
-class CoverLine:
-    text: str
-    top_pt: float
-    bottom_pt: float
-    size_pt: float
+def value(setup: dict[str, str], key: str) -> str:
+    """One \\ntusetup value, as the class would set it.
 
-    @property
-    def chinese(self) -> bool:
-        """Whether this is one of the cover's Chinese lines rather than its English.
-
-        Most of it has to be Chinese, not merely some: an English title that
-        quotes a Chinese term is still the English title.
-        """
-        letters = [character for character in self.text if not character.isspace()]
-        chinese = [c for c in letters if ord(c) >= CJK_FIRST]
-        return bool(letters) and 2 * len(chinese) > len(letters)
-
-
-@dataclass(frozen=True)
-class Cover:
-    """What the built thesis's cover tells the spine."""
-
-    font: str
-    face: bytes  # the PDF's own copy of that font, to tell one revision from another
-    width_pt: float
-    height_pt: float
-    lines: tuple[CoverLine, ...]
-
-    @property
-    def top_pt(self) -> float:
-        return self.lines[0].top_pt
-
-    @property
-    def bottom_pt(self) -> float:
-        return self.lines[-1].bottom_pt
-
-    @property
-    def text_height_pt(self) -> float:
-        return self.bottom_pt - self.top_pt
-
-
-def read_cover(document: pymupdf.Document) -> Cover:
-    """Take the cover apart: its Chinese face, its lines, and where they sit.
-
-    The class stamps a linked doi: line a centimetre from the foot of every
-    page. It is an overlay rather than part of the cover's text, and measuring
-    down to it would stretch the spine past the cover's last line, so whatever
-    sits inside a link is left out.
-
-    Each line is composed as it is read. A PDF may spell an accented letter or
-    a kana with its mark as a separate character, and a vertical line gives a
-    character a slot of its own: `か` followed by U+3099 would be measured two
-    slots deep where LibreOffice sets it one, and the block sized from that
-    would come out short.
+    TeX turns any run of whitespace into a single space, so the spine reads a
+    wrapped source value the way the cover prints it. Composed, because a
+    vertical line gives every character a slot of its own and a decomposed
+    accent or kana mark would take a second one.
     """
-    page = document[0]
-    overlays = [pymupdf.Rect(link["from"]) for link in page.get_links()]
-    font, lines = "", []
-    for block in page.get_text("dict")["blocks"]:
-        for line in block.get("lines", []):
-            text = unicodedata.normalize(
-                "NFC", "".join(span["text"] for span in line["spans"])
-            ).strip()
-            if not text:
-                continue
-            box = pymupdf.Rect(line["bbox"])
-            # The centre rather than the whole box: a glyph can overhang the
-            # link rectangle drawn around it by a fraction of a point.
-            middle = pymupdf.Point((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2)
-            if COVER_OVERLAY.match(text) and any(middle in link for link in overlays):
-                continue
-            lines.append(
-                CoverLine(
-                    text=text,
-                    top_pt=box.y0,
-                    bottom_pt=box.y1,
-                    size_pt=max(span["size"] for span in line["spans"]),
-                )
-            )
-            for span in line["spans"] if not font else ():
-                if any(ord(character) >= CJK_FIRST for character in span["text"]):
-                    font = re.sub(r"^[A-Z]{6}\+", "", span["font"])
-                    break
-    if not lines:
-        raise CollectionError("Page 1 of the built PDF prints nothing the spine can read.")
-    if not font:
+    return unicodedata.normalize("NFC", collapse_spaces(setup.get(key, "")))
+
+
+def roc_date(given: str) -> tuple[int, int]:
+    """民國年與月份。The class dates an undated thesis today, and so does this."""
+    if not given:
+        today = date.today()
+        return today.year - ROC_EPOCH, today.month
+    written = ISO_DATE.fullmatch(given)
+    if not written:
         raise CollectionError(
-            "Page 1 of the built PDF prints no Chinese, so its Chinese font cannot "
-            "be identified. Build the thesis before writing the spine."
+            f"ntusetup.tex dates the thesis {given!r}, which is not the YYYY-MM-DD "
+            "the class expects, so the spine cannot letter its year and month."
         )
-    return Cover(
-        font=font,
-        face=embedded_face(document, page, font),
-        width_pt=page.rect.width,
-        height_pt=page.rect.height,
-        lines=tuple(sorted(lines, key=lambda line: line.top_pt)),
-    )
+    return int(written.group(1)) - ROC_EPOCH, int(written.group(2))
 
 
-def embedded_face(document: pymupdf.Document, page: pymupdf.Page, name: str) -> bytes:
-    """The copy of a face the PDF carries, cut down to what the cover set in it.
+def read_spine_text(root: Path) -> SpineText:
+    """Collect what the spine letters, in the thesis's own words.
 
-    A page refers to its fonts by the name the producer gave them, with the
-    subset tag in front and sometimes the encoding behind; the object itself
-    is what says which file the face came out of.
+    The form gives the head two columns: the university in the right-hand one
+    and the institute in the left. \\ntusetup names them separately, and the
+    college it prints between them on the cover is on neither column of the
+    form, so nothing has to be taken apart to letter it.
     """
-    for xref, _, _, basename, *_ in page.get_fonts(full=True):
-        bare = re.sub(r"^[A-Z]{6}\+", "", basename)
-        if bare == name or bare.startswith(f"{name}-"):
-            return document.extract_font(xref)[3]
-    logging.debug("The built PDF keeps no copy of %s to compare against.", name)
-    return b""
-
-
-def split_heading(heading: str, root: Path) -> tuple[str, str]:
-    """Take the university and the institute out of the cover's first line.
-
-    The form's head has two columns and the cover has one line, so the line
-    has to be divided: the university goes in the right-hand column, the
-    institute in the left, and the college the cover names between them is
-    what the form leaves out. NTU's own list of colleges says where each one
-    ends -- 共同教育中心 is a college whose name does not end in 學院, so the
-    suffix below cannot find every boundary on its own.
-
-    A listed college counts only where the cover puts it, straight after the
-    university: 醫學院 also occurs inside the name of an institute, and a
-    college not on the list should reach the suffix rule rather than let a
-    match further along the line swallow it.
-    """
-    try:
-        colleges, _ = parse_academic_units(root / "ntu-academic-units.tex")
-        names = sorted({chinese for chinese, _ in colleges}, key=len, reverse=True)
-    except (CollectionError, OSError):
-        names = []
-    for college in names:
-        place = heading.find(college)
-        if place <= 0:
-            continue
-        university, institute = heading[:place], heading[place + len(college) :]
-        if institute and UNIVERSITY.fullmatch(university):
-            return university, institute
-    named = HEADING.match(heading)
-    if named:
-        return named.group("university"), named.group("institute")
-    raise CollectionError(
-        f"The cover's first line, {heading!r}, does not read as a university, a "
-        "college and an institute, so the spine cannot letter its heading."
-    )
-
-
-# Printed at the break itself, in place of the space it did not break at.
-# Only the hyphens: TeX breaks a line at glue or at a discretionary, and it is
-# hyphenation and an explicit hyphen that leave one of these behind. A dash is
-# neither, so a Latin line that ends in one ended at the space after it --
-# while a CJK line, which may break beside its own 破折號, is settled by the
-# character on the other side.
-BREAK_MARKS = "-\u2010\u00ad"
-
-
-def unspaced(character: str) -> bool:
-    """Whether a line may break beside this character without eliding a space.
-
-    CJK sets one character straight after another, so a break inside it takes
-    nothing away. Everything else is set with spaces between its words --
-    the Latin alphabet, the punctuation that ends them, and the symbols a
-    vertical line stands upright though a Latin one does not, ° and × among
-    them, which is why this is not the same question as which way a character
-    faces.
-    """
-    return unicodedata.east_asian_width(character) in ("W", "F") or ord(character) >= CJK_FIRST
-
-
-def elided_space(before: str, after: str) -> bool:
-    """Whether the break between these two characters took a space with it."""
-    if before in BREAK_MARKS or before.isspace() or after.isspace():
-        return False
-    return not unspaced(before) and not unspaced(after)
-
-
-def join_wrapped(lines: list[str]) -> str:
-    """Put a line the cover broke back together.
-
-    A Chinese line simply resumes, so the halves are butted together. A line
-    broken inside horizontal text was broken at a space, and putting the
-    halves back without one runs two words into one -- `COVID-19:` and
-    `Methods`, or `30` and `°C`, as much as `Café` and `Society`, since the
-    break falls at the space beside punctuation and beside a symbol as
-    readily as between two letters. What was elided is a space only where
-    both sides are set with spaces; a boundary with CJK on either side of it
-    resumes, and a dash prints the break instead of standing in for a space.
-    """
-    joined = ""
-    for line in lines:
-        if joined and elided_space(joined[-1], line[0]):
-            joined += " "
-        joined += line
-    return joined
-
-
-def read_spine_text(cover: Cover, root: Path) -> SpineText:
-    """Collect what the spine letters, in the cover's own words.
-
-    The cover is set in a fixed order, and the class gives each part of it a
-    size: the school and the degree, then the school again in English a size
-    or two smaller, then -- back at the degree's size -- the title in both
-    languages, the author in both, the advisor, and the date. So the English
-    school block is told apart by its size, the author by its place two lines
-    above the advisor, and only the title has to be told from its English
-    twin by being Chinese.
-
-    That order is `\\makecover`'s, in `ntuthesis.cls`: change what the cover
-    prints, or the order it prints it in, and this is the code that has to
-    change with it.
-    """
-    lines = cover.lines
-    degree = next((i for i, line in enumerate(lines) if COVER_DEGREE.match(line.text)), None)
+    options = class_options(root / "main.tex")
+    setup = parse_ntusetup(root / "ntusetup.tex")
+    degree = DEGREE_NAMES.get(options.get("degree", "master"))
     if degree is None:
         raise CollectionError(
-            "The cover has no 碩士論文 or 博士論文 line, so the spine cannot tell "
-            "which degree it is for."
+            f"main.tex sets degree = {options['degree']}, which is neither master "
+            "nor doctor, so the spine cannot name the thesis."
         )
-    # The last of them: a title may begin with 指導教授, and is set above it.
-    advisor = next(
-        (
-            i
-            for i in range(len(lines) - 1, degree, -1)
-            if lines[i].text.startswith(COVER_ADVISOR)
-        ),
-        None,
-    )
-    if advisor is None:
+    absent = [key for key in ("university", "institute", "title", "author") if not value(setup, key)]
+    if absent:
         raise CollectionError(
-            f"The cover has no {COVER_ADVISOR} line after its degree, so the spine "
-            "cannot tell its title from its author."
+            f"ntusetup.tex leaves {', '.join(absent)} empty, so the spine has "
+            "nothing to letter there."
         )
-    # The school's English name is set smaller than the degree; what is left
-    # at the degree's own size is the title, the title in English, and the
-    # author in both. Any of the four may run to more than one line, so they
-    # are taken as runs of one language rather than counted.
-    body = [
-        line for line in lines[degree + 1 : advisor] if line.size_pt >= lines[degree].size_pt
-    ]
-    runs = [
-        list(run)
-        for _, run in itertools.groupby(body, key=lambda line: line.chinese)
-    ]
-    if len(runs) < 4 or runs[-1][0].chinese or not runs[-2][0].chinese:
-        raise CollectionError(
-            "The cover does not print a title and an author, each in Chinese and "
-            "then in English, between its degree and its advisor, so the spine "
-            "cannot read it."
-        )
-    # The Chinese title is the run the English one follows. Taking everything
-    # up to the author instead would swallow the English title whenever it
-    # wraps around a Chinese quotation of its own, so only the first run is
-    # read -- and if further Chinese runs sit between it and the author, no
-    # rule can say which title they belong to, so the run says so.
-    written = runs[0]
-    if not written[0].chinese:
-        raise CollectionError(
-            "The cover prints no Chinese title above its English one, so the "
-            "spine has nothing to letter."
-        )
-    if len(runs) > 4:
-        logging.warning(
-            "The cover's title and its English twin do not read as one Chinese "
-            "block followed by one English one, so the spine letters only "
-            "%r. Check it against the cover.",
-            collapse_spaces(join_wrapped([line.text for line in written])),
-        )
-    printed = [found for found in (COVER_DATE.search(line.text) for line in lines) if found]
-    if not printed:
-        raise CollectionError("The cover prints no 中華民國 date for the spine to carry.")
-
-    # The heading may run to more than one line too, and splits only once whole.
-    university, institute = split_heading(
-        join_wrapped([line.text for line in lines[:degree]]), root
-    )
+    year, month = roc_date(value(setup, "date"))
     return SpineText(
-        university=university,
-        institute=institute,
-        degree=lines[degree].text,
-        title=collapse_spaces(join_wrapped([line.text for line in written])),
-        author=collapse_spaces(join_wrapped([line.text for line in runs[-2]])),
-        # The last date on the page: a title may carry one of its own, above it.
-        roc_year=int(printed[-1].group(1)),
-        month=int(printed[-1].group(2)),
+        university=value(setup, "university"),
+        institute=value(setup, "institute"),
+        degree=degree,
+        title=value(setup, "title"),
+        author=value(setup, "author"),
+        roc_year=year,
+        month=month,
     )
 
 
@@ -616,125 +381,48 @@ def installed_fonts() -> list[FontFile]:
     return found
 
 
-def font_files(root: Path) -> Iterator[FontFile]:
-    """Every face the spine could be lettered from: shipped first, then installed.
+# 中文字型的來源，抄自 ntuthesis.cls 的 fontset 與 cjkfont 分支。
+# Where the class loads its Chinese face from, per fontset:
+#   default, tinos, (unset)  the shipped file cjkfont names, by path
+#   template                 the user's own BiauKai.ttf, by path
+#   system, overleaf         a family name, resolved by the machine
+CJK_DIRECTORY = "fonts/chinese"
+CJK_SHIPPED = {"kai": "TW-Kai-98_1.ttf", "sung": "TW-Sung-98_1.ttf"}
+CJK_TEMPLATE_FILE = "BiauKai.ttf"
+CJK_FAMILIES = {"system": "BiauKai", "overleaf": "AR PL KaitiM Big5"}
 
-    fontconfig is asked only once the shipped faces are exhausted, so a
-    machine with no fc-list on it can still write a spine in one of them.
+
+def locate_font(options: dict[str, str], root: Path) -> FontFile:
+    """The file the class sets Chinese in, found the way the class finds it.
+
+    Two of the fontsets name a family and leave the machine to resolve it, so
+    fontconfig is asked for what it has rather than asked to match: it answers
+    a request for a face it does not have with a metric-compatible stand-in,
+    and a spine lettered in the stand-in would look nothing like the cover.
+    Each candidate is opened and made to say for itself that it is the face
+    asked for; a .ttc is several faces in one file, and only one is the answer.
     """
-    for path in sorted(root.glob("fonts/**/*")):
-        if path.suffix.lower() in (".ttf", ".otf", ".ttc"):
-            for index in range(collection_size(path)):
-                yield FontFile(path, index)
-    yield from installed_fonts()
-
-
-def face_marks(font: TTFont) -> dict[str, object]:
-    """What tells one revision of a face from another.
-
-    A PDF carries its fonts cut down to the glyphs they set and stripped of
-    their cmap, so the characters printed cannot be looked up in the copy it
-    keeps. What subsetting does leave alone is the face's own account of
-    itself: the em it is drawn on, its revision, the day it was made, and the
-    unique identifier and version string in its name table.
-    """
-    marks: dict[str, object] = {}
-    head = font["head"]
-    marks["em"] = head.unitsPerEm
-    marks["revision"] = round(head.fontRevision, 5)
-    marks["made"] = head.created
-    for record in (3, 5):  # the unique identifier, and the version
-        named = font["name"].getDebugName(record)
-        if named:
-            marks[f"name{record}"] = named
-    return marks
-
-
-def cover_marks(face: bytes) -> dict[str, object]:
-    """Read those marks off the copy inside the built PDF."""
-    if not face:
-        return {}
-    try:
-        with TTFont(io.BytesIO(face), lazy=True, fontNumber=0) as opened:
-            return face_marks(opened)
-    except Exception:  # noqa: BLE001 - fontTools raises a different type per defect
-        logging.debug("The built PDF's copy of its Chinese face cannot be read back.")
-        return {}
-
-
-def file_marks(font: FontFile) -> dict[str, object]:
-    """Read those marks off a file on disk."""
-    try:
-        with font.open(lazy=True) as opened:
-            return face_marks(opened)
-    except Exception:  # noqa: BLE001 - fontTools raises a different type per defect
-        logging.debug("Not a readable font: %s", font.name)
-        return {}
-
-
-def same_revision(wanted: dict[str, object], found: dict[str, object]) -> bool:
-    """Whether a file could be the very copy the cover was set from.
-
-    Only the marks both sides carry are compared: a subsetter may drop a name
-    record, and a record it dropped is not evidence of a different face.
-    """
-    shared = wanted.keys() & found.keys()
-    return bool(shared) and all(wanted[mark] == found[mark] for mark in shared)
-
-
-def locate_font(name: str, root: Path, face: bytes = b"") -> FontFile:
-    """Find the file behind a PDF font name: shipped with the template, or installed.
-
-    The built PDF names the face it used, and that name is a PostScript one --
-    標楷體 comes through as DFKaiShu-SB-Estd-BF -- so the search has to match
-    on more than the family. fontconfig is asked for what it has rather than
-    asked to match: it answers a request for a face it does not have with a
-    metric-compatible stand-in, so every candidate is opened and made to say
-    for itself that it is the font the thesis was built with. A .ttc is
-    several faces in one file, and only one of them is the answer.
-
-    A name is not proof on its own, either: an older revision left beside the
-    current one, or an installed face carrying a shipped face's names, would
-    letter the spine from outlines, metrics and embedding rights the cover was
-    never set in -- and nothing downstream could tell, since every name still
-    agrees. So the copy the PDF keeps of the face is asked which candidate it
-    is, and a file that answers to the name but contradicts it is passed over.
-    """
-    wanted = cover_marks(face)
-    named = []
-    for candidate in font_files(root):
-        if not any(same_font(name, found) for found in font_names(candidate)):
-            continue
-        if not wanted or same_revision(wanted, file_marks(candidate)):
-            return candidate
-        named.append(candidate)
-    if named:
-        logging.warning(
-            "No file on this machine matches the copy of %s inside the built PDF: "
-            "%s answers to the name but is a different revision of it. The spine is "
-            "lettered from that file. Rebuild the thesis, or read the spine against "
-            "the cover before printing it.",
-            name,
-            named[0].name,
+    fontset = options.get("fontset", "default")
+    if fontset in CJK_FAMILIES:
+        family = CJK_FAMILIES[fontset]
+        for candidate in installed_fonts():
+            if any(same_font(family, found) for found in font_names(candidate)):
+                return candidate
+        raise CollectionError(
+            f"main.tex builds with fontset = {fontset}, which sets Chinese in "
+            f"{family}, and no such face is installed on this machine. Install "
+            "it, or build with a fontset whose Chinese face ships with the template."
         )
-        return named[0]
-    raise CollectionError(
-        f"The built PDF sets Chinese in {name}, but no file for it was found in "
-        f"{root / 'fonts'} or among the fonts installed on this system. Install "
-        "it, or build with a fontset whose Chinese face ships with the template."
-    )
-
-
-def collection_size(path: Path) -> int:
-    if path.suffix.lower() != ".ttc":
-        return 1
-    try:
-        from fontTools.ttLib import TTCollection
-
-        with TTCollection(path, lazy=True) as collection:
-            return len(collection.fonts)
-    except Exception:  # noqa: BLE001 - an unreadable collection is simply not a match
-        return 1
+    if fontset == "template":
+        path = root / CJK_DIRECTORY / CJK_TEMPLATE_FILE
+    else:
+        path = root / CJK_DIRECTORY / CJK_SHIPPED.get(options.get("cjkfont", "kai"), "")
+    if not path.is_file():
+        raise CollectionError(
+            f"main.tex builds with fontset = {fontset}, which sets Chinese in "
+            f"{path}, and that file is not there. See fonts/README.md."
+        )
+    return FontFile(path)
 
 
 # The Chinese faces this template redistributes, named by the files they are.
@@ -747,22 +435,15 @@ SHIPPED_FILES = ("fonts/chinese/TW-Kai-98_1.ttf", "fonts/chinese/TW-Sung-98_1.tt
 def redistributed(font: FontFile, root: Path) -> bool:
     """Whether a file is one of the two faces this repository ships.
 
-    The question a name cannot answer. What those licences cover is these
-    faces, and a file of the user's own that merely answers to one of their
-    names is not one of them: relabelling its embedding rights would hand out
-    a permission nobody gave. So the file itself is asked -- by path, or,
-    where the same 全字庫 face is installed elsewhere on the machine, by the
-    identity marks of the file the repository ships.
+    The question a name cannot answer: what those licences cover is these
+    files, and one of the user's own that merely answers to their names is not
+    covered -- relabelling its embedding rights would hand out a permission
+    nobody gave. Only the fontsets that load a face by path can reach these,
+    so comparing the path is the whole test.
     """
-    for relative in SHIPPED_FILES:
-        shipped = root / relative
-        if not shipped.exists():
-            continue
-        if not font.index and font.path.resolve() == shipped.resolve():
-            return True
-        if same_revision(file_marks(FontFile(shipped)), file_marks(font)):
-            return True
-    return False
+    return any(
+        font.path.resolve() == (root / relative).resolve() for relative in SHIPPED_FILES
+    )
 
 
 # OS/2 fsType, the font's own statement of what may be embedded where.
@@ -782,6 +463,7 @@ class Embedding:
 
     face: bytes
     editable: bool  # may travel inside a document that can be edited
+    subsettable: bool  # may be cut down further
 
 
 def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding:
@@ -820,9 +502,9 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding
         )
 
     options = subset.Options()
-    # `vert` has to survive the cut: it is what gives a bracket, a comma or a
-    # full stop the shape it takes down a column rather than across a line,
-    # and LibreOffice reads it out of this copy.
+    # `vert` has to survive the cut, along with the glyphs it substitutes in:
+    # an office suite applies it to the ODT itself, and the PDF's copy of the
+    # face is this one with those glyphs already put in place.
     options.layout_features = ["*"]
     options.name_IDs = ["*"]
     options.name_legacy = True
@@ -845,15 +527,15 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding
     elif not editable:
         logging.warning(
             "%s allows embedding for print but not for editing, and is not one of "
-            "the faces this template may relabel, so the ODT names it instead of "
-            "carrying it. Open it on a machine that has the face installed -- "
-            "this one does, which is how the PDF beside it is set in the face.",
+            "the faces this template may relabel. The PDF carries it, which is "
+            "what a print permission covers; the ODT names it instead, so open "
+            "that on a machine which has the face installed.",
             font.name,
         )
     written = io.BytesIO()
     face.save(written)
     face.close()
-    return Embedding(written.getvalue(), editable)
+    return Embedding(written.getvalue(), editable, not rights & FSTYPE_NO_SUBSETTING)
 
 
 def missing_characters(font: FontFile, characters: str) -> str:
@@ -899,21 +581,14 @@ class Thickness:
         return self.measured_mm + self.board_mm
 
 
-def measure(
-    pages: int,
-    binding: Binding,
-    *,
-    duplex: bool,
-    paper_mm: float,
-    binding_mm: float,
-    measured_mm: float | None,
-) -> Thickness:
+def measure(pages: int, binding: Binding, measured_mm: float | None = None) -> Thickness:
+    duplex = pages >= DUPLEX_THRESHOLD_PAGES
     return Thickness(
         pages=pages,
         duplex=duplex,
         sheets=math.ceil(pages / 2) if duplex else pages,
-        paper_mm=paper_mm,
-        binding_mm=binding_mm,
+        paper_mm=PAPER_THICKNESS_MM,
+        binding_mm=PAPERBACK_BINDING_MM,
         board_mm=binding.board_mm,
         measured_mm=measured_mm,
     )
@@ -1072,6 +747,15 @@ class Block:
             offset += run.advance * self.size_pt + gap
         return placement
 
+    def centre_pt(self, index: int, width_pt: float) -> float:
+        """Where line `index` sits across the spine.
+
+        Vertical lines stack right to left, so the first line of a block is
+        its rightmost column.
+        """
+        offset = (len(self.lines) - 1) / 2 - index
+        return width_pt / 2 + offset * self.pitch_pt
+
     @property
     def ink_top_pt(self) -> float:
         """The top of the block's first line box, leading excluded.
@@ -1216,13 +900,8 @@ def block_room(block: Block) -> tuple[float, float]:
     return len(block.lines) * block.pitch_pt, leading / 2
 
 
-def lay_out(
-    text: SpineText,
-    width_pt: float,
-    ruler: pymupdf.Font,
-    cover: Cover | None,
-) -> Spine:
-    """Lay the spine out, optionally stretched to the cover's own text extent.
+def lay_out(text: SpineText, width_pt: float, ruler: pymupdf.Font) -> Spine:
+    """Lay the spine out, stretched to the same extent as the cover's text.
 
     NTU's form is drawn for a generic cover. On a bound book the spine reads
     better when its first character starts level with the cover's first line
@@ -1237,23 +916,21 @@ def lay_out(
     cover's last line does, so it always fits the sheet.
     """
     form = build_rows(text, width_pt, ruler, form_heights())
-    if cover is None:
-        return form
     blocks = form.blocks
     settled = sum(block.ink_bottom_pt - block.ink_top_pt for block in blocks[1:])
     elastic = blocks[0].height_pt + sum(
         after.ink_top_pt - before.ink_bottom_pt for before, after in zip(blocks, blocks[1:])
     )
-    if cover.text_height_pt <= settled or elastic <= 0:
+    if COVER_TEXT_HEIGHT_PT <= settled or elastic <= 0:
         raise CollectionError(
-            "The cover's text is shorter than the spine's own lines, so the two "
-            "cannot be aligned. Pass --no-cover-alignment to keep the form's rows."
+            "The spine's own lines are deeper than the cover's text, so the two "
+            "cannot be made to line up. The title is the usual reason."
         )
-    stretch = (cover.text_height_pt - settled) / elastic
+    stretch = (COVER_TEXT_HEIGHT_PT - settled) / elastic
 
     heights = form_heights()
     lettered = [index for index, (name, _) in enumerate(LAYOUT) if name]
-    ink_top, filled, previous = cover.top_pt, 0.0, -1
+    ink_top, filled, previous = COVER_TOP_PT, 0.0, -1
     for order, index in enumerate(lettered):
         block = blocks[order]
         if order:
@@ -1278,8 +955,8 @@ def lay_out(
     heights[-1] = form_foot_pt() - sum(heights[:-1])
     if heights[-1] < 0:
         raise CollectionError(
-            "Aligning to the cover would run the spine past the foot of the form's "
-            "table. Pass --no-cover-alignment to keep the form's own rows."
+            "Lining the spine up with the cover would run it past the foot of the "
+            "form's table."
         )
     return build_rows(text, width_pt, ruler, heights)
 
@@ -1289,97 +966,169 @@ def lay_out(
 # --------------------------------------------------------------------------
 
 
-# LibreOffice's own name for the export that turns a Writer document into a
-# PDF. Naming the filter leaves the suite nothing to guess at: `pdf` alone is
-# ambiguous to a suite that can also draw and calculate.
-PDF_FILTER = "pdf:writer_pdf_Export"
+def vertical_forms(font: FontFile, characters: str) -> dict[str, str]:
+    """The glyph a vertical line draws each character with, named.
 
-# The program answers to two names, and on macOS and Windows an ordinary
-# installation puts neither of them on the PATH.
-SOFFICE_NAMES = ("soffice", "libreoffice")
-SOFFICE_PLACES = (
-    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
-    r"C:\Program Files\LibreOffice\program\soffice.exe",
-    r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-)
-SOFFICE_TIMEOUT_S = 300
+    Vertical CJK does not merely turn the page: a bracket, a comma or a full
+    stop takes a different shape down a column, and which shape lives in the
+    font rather than at a code point of its own. HarfBuzz is asked for it --
+    the shaper an office suite lays the ODT out with -- rather than the
+    font's feature tables being read here and applied by guesswork.
 
-
-def find_soffice(given: str | None = None) -> str:
-    """Where LibreOffice is on this machine.
-
-    Asked before anything is written, so a machine without it hears so
-    instead of being left with an ODT and no PDF beside it.
+    Only what stands upright is asked about: a turned run is drawn from the
+    horizontal form and rotated, so a vertical form folded into one of those
+    would be turned twice.
     """
-    if given:
-        found = shutil.which(given)
-        if not found and not Path(given).is_file():
-            raise CollectionError(f"No LibreOffice to run at {given}.")
-        return found or given
-    for name in SOFFICE_NAMES:
-        found = shutil.which(name)
-        if found:
-            return found
-    for place in SOFFICE_PLACES:
-        if Path(place).is_file():
-            return place
-    raise CollectionError(
-        "The spine's PDF is LibreOffice's own rendering of the ODT, and no "
-        "LibreOffice was found. Install it -- `apt install libreoffice-writer`, "
-        "`brew install --cask libreoffice`, or <https://www.libreoffice.org/> -- "
-        "or say where it is with --soffice. It is not a Python package, so "
-        "`pixi` cannot fetch it."
-    )
+    face = hb.Face(hb.Blob.from_file_path(str(font.path)), font.index)
+    shaper = hb.Font(face)
+    with font.open(lazy=True) as opened:
+        names = opened.getGlyphOrder()
+
+    def glyphs(character: str, direction: str) -> list[int]:
+        buffer = hb.Buffer()
+        buffer.add_str(character)
+        buffer.guess_segment_properties()
+        buffer.direction = direction
+        hb.shape(shaper, buffer)
+        return [info.codepoint for info in buffer.glyph_infos]
+
+    forms = {}
+    for character in characters:
+        if not upright(character):
+            continue
+        down, across = glyphs(character, "ttb"), glyphs(character, "ltr")
+        if len(down) == 1 and down != across:
+            forms[character] = names[down[0]]
+    return forms
 
 
-def convert_odt(odt: Path, target: Path, soffice: str) -> None:
-    """Export the ODT to PDF, so that the two files cannot say different things.
+def drawn_face(font_bytes: bytes, forms: dict[str, str]) -> bytes:
+    """The copy of the face the PDF draws from, with two corrections.
 
-    Rendering the artwork twice -- once for the office suite and once for a
-    PDF writer -- means two typesetters and two chances to disagree about how
-    a vertical line sets a bracket, a Latin word or a combining mark. There is
-    one document here, and the PDF is what LibreOffice makes of it.
+    The first is the vertical forms. A PDF carries glyphs already chosen, so
+    folding the shaper's choice into this copy's character map is what puts
+    the vertical shapes on the page. The mapping back to Unicode is
+    untouched, so the PDF still reads as what it says.
 
-    It runs against a profile of its own in a directory thrown away
-    afterwards. A shared profile is a single lock: a run would otherwise
-    disturb the settings of, or be refused outright by, the copy of
-    LibreOffice the user already has open.
+    The second is `post.isFixedPitch`. 標楷體 sets it, though its ideographs
+    are a full em wide and its digits half of one, and a PDF writer that
+    believes it emits a single width for every glyph -- which sets the year on
+    the spine as three digits piled on top of each other. Clearing the flag
+    costs a font that really is monospaced nothing: its widths are then simply
+    written out, and they all still agree.
     """
-    with tempfile.TemporaryDirectory(prefix="ntu-spine-") as scratch:
-        room = Path(scratch)
-        command = [
-            soffice,
-            f"-env:UserInstallation={(room / 'profile').as_uri()}",
-            "--headless",
-            "--norestore",
-            "--invisible",
-            "--convert-to",
-            PDF_FILTER,
-            "--outdir",
-            str(room),
-            str(odt),
-        ]
-        try:
-            finished = subprocess.run(
-                command, capture_output=True, text=True, timeout=SOFFICE_TIMEOUT_S, check=False
-            )
-        except subprocess.TimeoutExpired:
-            raise CollectionError(
-                f"LibreOffice took longer than {SOFFICE_TIMEOUT_S}s over {odt.name}."
-            ) from None
-        written = room / f"{odt.stem}.pdf"
-        if finished.returncode or not written.is_file():
-            # A document it cannot convert leaves LibreOffice's exit status at
-            # zero, so the file it was asked for is what says whether it worked.
-            said = (finished.stderr.strip() or finished.stdout.strip()).splitlines()
-            raise CollectionError(
-                f"LibreOffice could not turn {odt.name} into a PDF"
-                + (f": {said[-1]}" if said else ".")
-            )
-        # Across devices, since the scratch directory need not be on the same
-        # filesystem as the thesis.
-        shutil.move(str(written), str(target))
+    face = TTFont(io.BytesIO(font_bytes))
+    kept = set(face.getGlyphOrder())
+    turned = 0
+    for table in face["cmap"].tables:
+        for code, name in list(table.cmap.items()):
+            wanted = forms.get(chr(code))
+            if wanted and wanted in kept and name != wanted:
+                table.cmap[code] = wanted
+                turned += 1
+    if turned:
+        logging.info("Set %d character(s) in their vertical form.", turned)
+    if face["post"].isFixedPitch:
+        logging.info(
+            "%s claims to be monospaced; writing its real widths.",
+            face["name"].getDebugName(1),
+        )
+        face["post"].isFixedPitch = 0
+    written = io.BytesIO()
+    face.save(written)
+    face.close()
+    return written.getvalue()
+
+
+def write_pdf(
+    spine: Spine,
+    font: pymupdf.Font,
+    metadata: dict[str, str],
+    target: Path,
+    subsettable: bool = True,
+) -> None:
+    """Draw the spine, run by run, where the layout puts it.
+
+    Upright characters are centred in their column, each on the glyph the
+    shaper chose for a vertical line. A turned run is drawn horizontally and
+    rotated a quarter turn clockwise about its own start, which is how a
+    vertical line sets Latin.
+    """
+    with pymupdf.open() as document:
+        page = document.new_page(width=spine.width_pt, height=PAGE_HEIGHT_PT)
+        upright_text = pymupdf.TextWriter(page.rect)
+        turned: list[tuple[pymupdf.TextWriter, pymupdf.Point]] = []
+        for block in spine.blocks:
+            if not block.vertical:
+                draw_across(block, spine.width_pt, font, upright_text)
+                continue
+            for index in range(len(block.lines)):
+                centre = block.centre_pt(index, spine.width_pt)
+                for run, offset in block.placed(index):
+                    if run.turned:
+                        turned.append(draw_turned(run, offset, centre, block, font, page))
+                        continue
+                    for position, character in enumerate(run.text):
+                        advance = font.glyph_advance(ord(character)) * block.size_pt
+                        upright_text.append(
+                            pymupdf.Point(
+                                centre - advance / 2,
+                                offset + position * block.size_pt + block.ascent * block.size_pt,
+                            ),
+                            character,
+                            font=font,
+                            fontsize=block.size_pt,
+                        )
+        upright_text.write_text(page)
+        for writer, pivot in turned:
+            writer.write_text(page, morph=(pivot, pymupdf.Matrix(-90)))
+        document.set_metadata(metadata)
+        if subsettable:
+            # The buffer is already cut to the spine's characters; this trims
+            # whatever the layout tables dragged along with them.
+            document.subset_fonts()
+        document.save(target, garbage=4, deflate=True)
     logging.info("Wrote %s", target)
+
+
+def draw_across(
+    block: Block, width_pt: float, font: pymupdf.Font, writer: pymupdf.TextWriter
+) -> None:
+    """Set the one horizontal block, its lines centred across the spine."""
+    # Half the leading above the line and half below, the way a line box is built.
+    leading = block.pitch_pt - block.size_pt * block.extent
+    top = block.top_pt + (block.height_pt - len(block.lines) * block.pitch_pt) / 2
+    for index, line in enumerate(block.lines):
+        baseline = top + index * block.pitch_pt + leading / 2 + font.ascender * block.size_pt
+        length = font.text_length(line.text, fontsize=block.size_pt)
+        writer.append(
+            pymupdf.Point((width_pt - length) / 2, baseline),
+            line.text,
+            font=font,
+            fontsize=block.size_pt,
+        )
+
+
+def draw_turned(
+    run: Run,
+    offset: float,
+    centre: float,
+    block: Block,
+    font: pymupdf.Font,
+    page: pymupdf.Page,
+) -> tuple[pymupdf.TextWriter, pymupdf.Point]:
+    """Queue one Latin run, laid out horizontally for a quarter turn clockwise.
+
+    Rotating about the pivot carries the run down its column, so it is written
+    left to right from there and the rotation does the rest. A quarter turn
+    clockwise puts what was above the baseline to the right of it, so the
+    baseline sits left of the column's centre line by as much as the face
+    leaves above it, less half an em.
+    """
+    pivot = pymupdf.Point(centre - block.size_pt * (font.ascender - 0.5), offset)
+    writer = pymupdf.TextWriter(page.rect)
+    writer.append(pivot, run.text, font=font, fontsize=block.size_pt)
+    return writer, pivot
 
 
 # --------------------------------------------------------------------------
@@ -1697,82 +1446,30 @@ def spine_metadata(text: SpineText, binding: Binding, thickness: Thickness) -> d
     }
 
 
-def write_proof(spine_pdf: Path, thesis: Path, target: Path) -> None:
-    """Join the spine to the cover, the way the two meet on the bound book.
-
-    An 8 mm spine beside a 210 mm cover makes a 218 mm sheet: the spine on the
-    left, the cover butted against it, nothing between them. Reading across
-    the join is the quickest check that the two agree.
-    """
-    with pymupdf.open(spine_pdf) as spine, pymupdf.open(thesis) as book:
-        cover = book[0]
-        width = spine[0].rect.width + cover.rect.width
-        with pymupdf.open() as proof:
-            page = proof.new_page(width=width, height=cover.rect.height)
-            page.show_pdf_page(
-                pymupdf.Rect(0, 0, spine[0].rect.width, spine[0].rect.height), spine, 0
-            )
-            page.show_pdf_page(
-                pymupdf.Rect(spine[0].rect.width, 0, width, cover.rect.height), book, 0
-            )
-            proof.save(target, garbage=4, deflate=True)
-    logging.info("Wrote %s", target)
-
-
-def describe(
-    binding: Binding,
-    thickness: Thickness,
-    spine: Spine,
-    cover: Cover | None,
-    written: list[Path],
-) -> None:
-    sides = "雙面 (double-sided)" if thickness.duplex else "單面 (single-sided)"
+def describe(binding: Binding, thickness: Thickness, spine: Spine, written: list[Path]) -> None:
     print(f"{binding.name_zh} ({binding.key}): {thickness.width_mm:g} mm wide")
-    if thickness.measured_mm is None:
-        print(
-            f"  thickness   {thickness.pages} pages, {sides}, {thickness.sheets} sheets"
-            f" x {thickness.paper_mm:g} mm = {thickness.text_block_mm:.2f} mm"
-        )
-        added = f"{thickness.binding_mm:g} mm cover and glue"
-        if thickness.board_mm:
-            added += f" + {thickness.board_mm:g} mm board"
-        print(f"              + {added} = {thickness.raw_mm:.2f} mm, rounded up")
-    else:
-        given = f"  thickness   {thickness.measured_mm:g} mm given"
-        if thickness.board_mm:
-            given += f" + {thickness.board_mm:g} mm board"
-        print(f"{given} (the {thickness.pages}-page count says {thickness.computed_mm} mm)")
-    if cover is None:
-        print("  alignment   the form's own rows (cover alignment off)")
-    else:
-        print(
-            f"  alignment   text {spine.ink_top_pt:.1f}-{spine.ink_bottom_pt:.1f} pt,"
-            f" the cover's {cover.top_pt:.1f}-{cover.bottom_pt:.1f} pt"
-        )
     for block in spine.blocks:
         note = " (shrunk to fit)" if block.shrunk else ""
         print(f"  {block.name:<9} {block.size_pt:g} pt{note}  {' / '.join(block.texts)}")
     for path in written:
-        print(f"  {path.name:<34} {path.stat().st_size:,} bytes")
+        print(f"  {path.name:<30} {path.stat().st_size:,} bytes")
 
 
 def build(args: argparse.Namespace) -> None:
     source = args.input.resolve()
     if not source.is_file():
         raise CollectionError(f"No such PDF: {source}. Run `pixi run build` first.")
-    soffice = find_soffice(args.soffice)
     with pymupdf.open(source) as document:
         if document.needs_pass:
             raise CollectionError(
                 f"{source.name} cannot be opened without a password. Write the spine "
                 "from the PDF that `pixi run build` produced."
             )
-        pages = args.pages or document.page_count
-        cover = read_cover(document)
+        pages = document.page_count
 
-    text = read_spine_text(cover, PROJECT_ROOT)
-    font_file = locate_font(cover.font, PROJECT_ROOT, cover.face)
-    logging.info("The thesis sets Chinese in %s (%s)", cover.font, font_file.path)
+    text = read_spine_text(PROJECT_ROOT)
+    font_file = locate_font(class_options(PROJECT_ROOT / "main.tex"), PROJECT_ROOT)
+    logging.info("The thesis sets Chinese in %s", font_file.path)
     absent = missing_characters(font_file, text.characters())
     if absent:
         raise CollectionError(f"{font_file.name} has no glyph for {absent!r}.")
@@ -1781,36 +1478,28 @@ def build(args: argparse.Namespace) -> None:
     if not shipped:
         # Where the first character of a vertical line sits is the face's own
         # doing: one that declares no vertical metrics -- 標楷體 is one -- has
-        # LibreOffice hang its column about an ascent higher than the row the
-        # layout gives it, and the alignment with the cover moves with it.
+        # an office suite hang its column about an ascent higher than the row
+        # the layout gives it, while the PDF here draws it in the row itself.
         logging.warning(
-            "%s is not one of the faces this template ships. The rows are the "
-            "form's either way, but LibreOffice sets some faces' vertical lines "
-            "about an ascent higher within them, so check the artwork against "
-            "the cover before sending it to the bindery.",
+            "%s is not one of the faces this template ships. Both files are laid "
+            "out alike, but an office suite sets some faces' vertical lines about "
+            "an ascent higher than the PDF draws them, so take the PDF as the one "
+            "to print.",
             font_file.name,
         )
     embedding = embeddable_font(font_file, text.characters(), shipped)
     family = font_names(font_file)[0]
-    # Only to measure with. LibreOffice does the setting, vertical forms and
-    # all; what the layout needs from the face is how much room each line
-    # takes, which is the sum of its advances.
-    ruler = pymupdf.Font(fontbuffer=embedding.face)
-    aligned = None if args.no_cover_alignment else cover
+    # The ODT keeps the face as it is, because an office suite picks the
+    # vertical forms itself; the PDF carries a copy that has already picked
+    # them, and both are measured with the same advances.
+    drawn = drawn_face(embedding.face, vertical_forms(font_file, text.characters()))
+    ruler = pymupdf.Font(fontbuffer=drawn)
 
-    duplex = pages >= DUPLEX_THRESHOLD_PAGES if args.sides == "auto" else args.sides == "double"
     for binding in BINDINGS:
         if args.binding not in ("both", binding.key):
             continue
-        thickness = measure(
-            pages,
-            binding,
-            duplex=duplex,
-            paper_mm=args.paper_thickness,
-            binding_mm=args.binding_allowance,
-            measured_mm=args.paperback_width,
-        )
-        spine = lay_out(text, mm(thickness.width_mm), ruler, aligned)
+        thickness = measure(pages, binding, measured_mm=args.paperback_width)
+        spine = lay_out(text, mm(thickness.width_mm), ruler)
         metadata = spine_metadata(text, binding, thickness)
         # Appended, not substituted: a thesis called thesis.final.pdf would
         # otherwise have Path.with_suffix take ".final-spine-paperback" for an
@@ -1818,20 +1507,15 @@ def build(args: argparse.Namespace) -> None:
         stem = f"{source.stem}-spine-{binding.key}"
         odt, pdf = args.output_dir / f"{stem}.odt", args.output_dir / f"{stem}.pdf"
         write_odt(spine, family, embedding.face if embedding.editable else None, metadata, odt)
-        convert_odt(odt, pdf, soffice)
-        written = [odt, pdf]
-        if args.with_cover:
-            proof = args.output_dir / f"{stem}-with-cover.pdf"
-            write_proof(pdf, source, proof)
-            written.append(proof)
-        describe(binding, thickness, spine, aligned, written)
+        write_pdf(spine, ruler, metadata, pdf, embedding.subsettable)
+        describe(binding, thickness, spine, [odt, pdf])
 
 
 def arguments() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "input", nargs="?", type=Path, default=DEFAULT_INPUT,
-        help="built thesis PDF (default: main.pdf)",
+        help="built thesis PDF, for its page count (default: main.pdf)",
     )
     parser.add_argument(
         "-o", "--output-dir", type=Path, default=PROJECT_ROOT,
@@ -1842,52 +1526,11 @@ def arguments() -> argparse.ArgumentParser:
         help="which binding to write (default: both)",
     )
     parser.add_argument(
-        "--pages", type=int,
-        help="page count to bind, when it differs from the PDF's own",
-    )
-    parser.add_argument(
-        "--sides", choices=("auto", "single", "double"), default="auto",
-        help=(
-            "how the text pages are printed (default: auto, single-sided below "
-            f"{DUPLEX_THRESHOLD_PAGES} pages of the PDF and double-sided from "
-            "there up)"
-        ),
-    )
-    parser.add_argument(
-        "--paper-thickness", type=float, default=PAPER_THICKNESS_MM, metavar="MM",
-        help=f"thickness of one text sheet (default: {PAPER_THICKNESS_MM} mm, 80 磅道林紙)",
-    )
-    parser.add_argument(
-        "--binding-allowance", type=float, default=PAPERBACK_BINDING_MM, metavar="MM",
-        help=(
-            "what the paperback's cover and glue add to the text block "
-            f"(default: {PAPERBACK_BINDING_MM} mm)"
-        ),
-    )
-    parser.add_argument(
         "--paperback-width", type=float, metavar="MM",
         help=(
             "the 平裝 copy's own measured thickness in mm, used instead of the "
             "computed one; 精裝 is always this plus its boards, so measure the "
             "paperback even when writing the hardcover"
-        ),
-    )
-    parser.add_argument(
-        "--soffice", metavar="PATH",
-        help=(
-            "the LibreOffice that renders the ODT into the PDF (default: "
-            "whichever is on the PATH, or an ordinary macOS or Windows install)"
-        ),
-    )
-    parser.add_argument(
-        "--with-cover", action="store_true",
-        help="also write <name>-with-cover.pdf: the spine joined to the thesis's cover",
-    )
-    parser.add_argument(
-        "--no-cover-alignment", action="store_true",
-        help=(
-            "keep the form's own row positions instead of stretching them so the "
-            "spine's text lines up with the cover's first and last lines"
         ),
     )
     return parser
@@ -1898,12 +1541,6 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     # fontTools narrates every table it touches; only its complaints matter here.
     logging.getLogger("fontTools").setLevel(logging.WARNING)
-    if args.pages is not None and args.pages < 1:
-        logging.error("--pages must be positive.")
-        return 1
-    if args.paper_thickness <= 0 or args.binding_allowance < 0:
-        logging.error("Paper thickness must be positive and the binding allowance non-negative.")
-        return 1
     if args.paperback_width is not None and args.paperback_width <= 0:
         # A hardcover adds its boards to whatever this says, so a negative
         # measurement would come out the other side looking like a real width.

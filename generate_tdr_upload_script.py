@@ -29,16 +29,23 @@ import pymupdf
 import requests
 from openpyxl import load_workbook
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
+from thesis_metadata import (  # noqa: E402
+    CollectionError,
+    braced_group,
+    class_options,
+    collapse_spaces,
+    latex_to_plain,
+    parse_ntusetup,
+    strip_comments,
+)
+
 warnings.filterwarnings(
     "ignore",
     message=r"Cannot parse header or footer.*",
     category=UserWarning,
     module=r"openpyxl\.worksheet\.header_footer",
 )
-
-
-class CollectionError(ValueError):
-    pass
 
 
 # TDR's department dropdown does not always use the same wording as
@@ -114,64 +121,6 @@ class CalendarLinkParser(HTMLParser):
             self._text = []
 
 
-def strip_comments(text: str) -> str:
-    lines = []
-    for line in text.splitlines():
-        match = re.search(r"(?<!\\)%", line)
-        lines.append(line[: match.start()] if match else line)
-    return "\n".join(lines)
-
-
-def braced_group(text: str, opening: int) -> tuple[str, int]:
-    if opening >= len(text) or text[opening] != "{":
-        raise CollectionError("Expected an opening brace while parsing LaTeX")
-    depth = 0
-    escaped = False
-    for index in range(opening, len(text)):
-        char = text[index]
-        if escaped:
-            escaped = False
-        elif char == "\\":
-            escaped = True
-        elif char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                return text[opening + 1 : index], index + 1
-    raise CollectionError("Unbalanced braces while parsing LaTeX")
-
-
-def latex_to_plain(text: str) -> str:
-    text = strip_comments(text)
-    text = re.sub(r"\\(?:begin|end)\{[^{}]+\}", "", text)
-    text = re.sub(
-        r"\\texorpdfstring\s*\{([^{}]*)\}\s*\{[^{}]*\}", r"\1", text
-    )
-    unwrap = re.compile(
-        r"\\(?:textbf|textit|emph|mbox|textrm|textsf|texttt|mathrm|mathbf|"
-        r"mathit|operatorname|url)\s*\{([^{}]*)\}"
-    )
-    previous = None
-    while previous != text:
-        previous = text
-        text = unwrap.sub(r"\1", text)
-    for source, target in {
-        r"\&": "&",
-        r"\%": "%",
-        r"\#": "#",
-        r"\_": "_",
-        r"\$": "$",
-        r"\{": "{",
-        r"\}": "}",
-        "~": " ",
-    }.items():
-        text = text.replace(source, target)
-    text = re.sub(r"\\[(),\[\]]", "", text).replace("$", "")
-    text = re.sub(r"\\[A-Za-z@]+\*?", "", text)
-    return text.replace("{", "").replace("}", "")
-
-
 def normalize_paragraphs(text: str) -> str:
     """Remove line wrapping inside paragraphs; preserve paragraph breaks."""
     text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -188,21 +137,6 @@ def normalize_paragraphs(text: str) -> str:
 def normalize_abstract(text: str) -> str:
     """Use one newline between paragraphs and none within a paragraph."""
     return normalize_paragraphs(text).replace("\n\n", "\n")
-
-
-def parse_ntusetup(path: Path) -> dict[str, str]:
-    text = strip_comments(path.read_text(encoding="utf-8"))
-    marker = re.search(r"\\ntusetup\s*\{", text)
-    if not marker:
-        raise CollectionError(f"Could not find \\ntusetup in {path}")
-    block, _ = braced_group(text, marker.end() - 1)
-    values: dict[str, str] = {}
-    cursor = 0
-    pattern = re.compile(r"([A-Za-z][\w*-]*)\s*=\s*\{")
-    while match := pattern.search(block, cursor):
-        value, cursor = braced_group(block, match.end() - 1)
-        values[match.group(1)] = latex_to_plain(value).strip()
-    return values
 
 
 COMMITTEE_REQUIRED = ("name", "name*", "email", "title")
@@ -329,18 +263,6 @@ def parse_academic_units(path: Path) -> tuple[set[tuple[str, str]], set[tuple[st
     return colleges, units
 
 
-def collapse_spaces(text: str) -> str:
-    """Normalise whitespace the way TeX does when it tokenises a file.
-
-    TeX turns any run of spaces and newlines into a single space, so
-    "Institute of  Industrial Engineering" reaches the class as the official
-    name and the build raises no warning. Comparing the raw text here instead
-    would reject what the build just accepted, leaving the two validators
-    disagreeing about the same file.
-    """
-    return " ".join(text.split())
-
-
 def check_academic_units(setup: dict[str, str], root: Path) -> None:
     """Reject a college or institute that is not one NTU publishes.
 
@@ -382,16 +304,10 @@ def check_academic_units(setup: dict[str, str], root: Path) -> None:
 
 
 def parse_language(path: Path) -> str:
-    text = strip_comments(path.read_text(encoding="utf-8"))
-    document = re.search(
-        r"\\documentclass\s*\[(.*?)\]\s*\{ntuthesis\}", text, re.DOTALL
-    )
-    if not document:
-        raise CollectionError(f"Could not find ntuthesis options in {path}")
-    language = re.search(r"\blanguage\s*=\s*(chinese|english)\b", document.group(1))
-    if not language:
+    language = class_options(path).get("language", "chinese")
+    if language not in ("chinese", "english"):
         raise CollectionError(f"Could not infer the thesis language from {path}")
-    return "中文" if language.group(1) == "chinese" else "English"
+    return "中文" if language == "chinese" else "English"
 
 
 def extract_abstracts(path: Path) -> tuple[str, str]:
