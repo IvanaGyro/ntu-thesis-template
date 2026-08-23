@@ -916,7 +916,7 @@ def draw_turned(
     page: pymupdf.Page,
 ) -> tuple[pymupdf.TextWriter, pymupdf.Point]:
     """Queue one Latin run, laid out horizontally for a quarter turn clockwise."""
-    pivot = pymupdf.Point(centre - block.size_pt * (font.ascender - 0.5), offset)
+    pivot = pymupdf.Point(centre - block.size_pt * (font.ascender + font.descender) / 2, offset)
     writer = pymupdf.TextWriter(page.rect)
     writer.append(pivot, run.text, font=font, fontsize=block.size_pt)
     return writer, pivot
