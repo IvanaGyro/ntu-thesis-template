@@ -21,7 +21,6 @@ import os
 import re
 import subprocess
 import sys
-import unicodedata
 import zipfile
 from dataclasses import dataclass
 from datetime import date
@@ -205,8 +204,14 @@ class SpineText:
 
 
 def value(setup: dict[str, str], key: str) -> str:
-    """One \ntusetup value, as the class would set it."""
-    return unicodedata.normalize("NFC", collapse_spaces(setup.get(key, "")))
+    """One \ntusetup value, as the class would set it.
+
+    Code points untouched: what the source was written with is what the cover
+    was set from, and composing a decomposed sequence here could ask the face
+    for a character it does not have -- the 全字庫 faces carry the Hangul
+    jamo but not the syllables they compose into.
+    """
+    return collapse_spaces(setup.get(key, ""))
 
 
 def roc_date(given: str) -> tuple[int, int]:

@@ -247,7 +247,9 @@ cover's first line and its last finishes level with the cover's last.
 Both files are set in the very face `main.tex` sets Chinese in: the PDF always
 carries it, and the ODT carries it too unless the face's licence forbids
 embedding in a document that can be edited, in which case the ODT names it and
-the machine that opens it supplies it.
+the machine that opens it supplies it. What travels is a subset — the
+characters the spine letters — so a print shop can move and resize what is
+there, but typing a new character needs the face installed on their machine.
 
 Like `cover` and `protect`, none of this runs as part of `pixi run build`.
 
