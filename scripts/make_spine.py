@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 import zipfile
 from dataclasses import dataclass
 from datetime import date
@@ -505,10 +506,29 @@ class Run:
     advance: float  # in em, so that a point size scales it
 
 
+def shaped(line: str, ruler: pymupdf.Font) -> str:
+    """The line as the shaper will set it, mark by mark.
+
+    A combining mark is folded into the character before it wherever the face
+    has the composed form, because that is what HarfBuzz does when it sets
+    the cover and the ODT, and one slot is what it then takes. Where the face
+    has no composed form the components stand as they are -- the 全字庫 faces
+    carry the Hangul jamo and none of the syllables they compose into.
+    """
+    written = ""
+    for character in line:
+        joined = unicodedata.normalize("NFC", written[-1:] + character) if written else ""
+        if len(joined) == 1 and ruler.has_glyph(ord(joined)):
+            written = written[:-1] + joined
+        else:
+            written += character
+    return written
+
+
 def split_runs(line: str, ruler: pymupdf.Font) -> tuple[Run, ...]:
     """Break a line into upright characters and turned Latin runs."""
     runs: list[Run] = []
-    for character in line:
+    for character in shaped(line, ruler):
         if upright(character):
             runs.append(Run(character, False, 1.0))
             continue

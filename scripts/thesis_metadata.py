@@ -95,20 +95,27 @@ KEY = re.compile(r"([A-Za-z][\w*-]*)\s*=\s*")
 def key_values(block: str) -> dict[str, str]:
     """The key=value pairs of a keyval list, as the class's own parser reads it.
 
-    A value may be wrapped in braces, which the parser takes off and which is
-    also how a value holds the comma that would otherwise end it; a value
-    without them runs to the next comma.
+    A value runs to the comma that ends it, counting braces on the way so
+    that `title = {以 {粗體} 標示}, ...` is one value; the braces come off
+    only when they wrap the whole of it, since `title = {AI} 與醫療` says
+    more than `AI`.
     """
     values: dict[str, str] = {}
     cursor = 0
     while match := KEY.search(block, cursor):
-        if block[match.end() : match.end() + 1] == "{":
-            value, cursor = braced_group(block, match.end())
-        else:
-            cursor = block.find(",", match.end())
-            cursor = len(block) if cursor < 0 else cursor
-            value = block[match.end() : cursor]
-        values[match.group(1)] = value.strip()
+        cursor, depth = match.end(), 0
+        while cursor < len(block) and not (block[cursor] == "," and not depth):
+            if block[cursor] == "\\":
+                cursor += 1
+            elif block[cursor] == "{":
+                depth += 1
+            elif block[cursor] == "}":
+                depth -= 1
+            cursor += 1
+        value = block[match.end() : cursor].strip()
+        if value.startswith("{") and braced_group(value, 0)[1] == len(value):
+            value = value[1:-1].strip()
+        values[match.group(1)] = value
     return values
 
 
