@@ -37,7 +37,6 @@ from fontTools.ttLib import TTFont
 PROJECT_ROOT = Path(
     os.environ.get("PIXI_PROJECT_ROOT", Path(__file__).resolve().parents[1])
 ).resolve()
-DEFAULT_INPUT = PROJECT_ROOT / "main.pdf"
 
 MM_PER_IN = 25.4
 PT_PER_IN = 72.0
@@ -72,17 +71,8 @@ BOARD_THICKNESS_MM = 4.00
 DUPLEX_THRESHOLD_PAGES = 80
 
 
-@dataclass(frozen=True)
-class Binding:
-    key: str
-    name_zh: str
-    board_mm: float
-
-
-BINDINGS = (
-    Binding("paperback", "平裝", 0.0),
-    Binding("hardcover", "精裝", BOARD_THICKNESS_MM),
-)
+# 兩種裝訂：檔名、書側上的名稱、紙板厚度。
+BINDINGS = (("paperback", "平裝", 0.0), ("hardcover", "精裝", BOARD_THICKNESS_MM))
 
 
 # --- The layout of the official form ---------------------------------------
@@ -375,16 +365,7 @@ FSTYPE_NO_SUBSETTING = 0x0100  # embed the whole face or none of it
 FSTYPE_BITMAP_ONLY = 0x0200  # only the bitmaps inside it, never the outlines
 
 
-@dataclass(frozen=True)
-class Embedding:
-    """A face cut to size, with what its own terms allow done to it."""
-
-    face: bytes
-    editable: bool  # may travel inside a document that can be edited
-    subsettable: bool  # may be cut down further
-
-
-def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding:
+def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[bytes, bool, bool]:
     """Cut the face down to the glyphs the spine prints, and say where it may go."""
     with font.open(lazy=True) as probe:
         rights = probe["OS/2"].fsType
@@ -439,7 +420,9 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> Embedding
     written = io.BytesIO()
     face.save(written)
     face.close()
-    return Embedding(written.getvalue(), editable, not rights & FSTYPE_NO_SUBSETTING)
+    # The face, whether it may travel inside a document that can be edited,
+    # and whether it may be cut down further.
+    return written.getvalue(), editable, not rights & FSTYPE_NO_SUBSETTING
 
 
 def missing_characters(font: FontFile, characters: str) -> str:
@@ -451,49 +434,15 @@ def missing_characters(font: FontFile, characters: str) -> str:
 # --- How wide the spine has to be ------------------------------------------
 
 
-@dataclass(frozen=True)
-class Thickness:
-    pages: int
-    duplex: bool
-    sheets: int
-    paper_mm: float
-    binding_mm: float
-    board_mm: float
-    measured_mm: float | None
-
-    @property
-    def text_block_mm(self) -> float:
-        return self.sheets * self.paper_mm
-
-    @property
-    def raw_mm(self) -> float:
-        return self.text_block_mm + self.binding_mm + self.board_mm
-
-    @property
-    def computed_mm(self) -> int:
-        # A bindery works in whole millimetres, and a spine that is a shade
-        # too wide still binds while one a shade too narrow does not.
-        return math.ceil(self.raw_mm - 1e-9)
-
-    @property
-    def width_mm(self) -> float:
-        """What the spine is actually drawn at: a measured book beats the sum."""
-        if self.measured_mm is None:
-            return self.computed_mm
-        return self.measured_mm + self.board_mm
-
-
-def measure(pages: int, binding: Binding, measured_mm: float | None = None) -> Thickness:
-    duplex = pages >= DUPLEX_THRESHOLD_PAGES
-    return Thickness(
-        pages=pages,
-        duplex=duplex,
-        sheets=math.ceil(pages / 2) if duplex else pages,
-        paper_mm=PAPER_THICKNESS_MM,
-        binding_mm=PAPERBACK_BINDING_MM,
-        board_mm=binding.board_mm,
-        measured_mm=measured_mm,
-    )
+def spine_width_mm(pages: int, board_mm: float, measured_mm: float | None) -> float:
+    """How wide the artwork is, in the whole millimetres a bindery works in."""
+    if measured_mm is not None:
+        return measured_mm + board_mm
+    sheets = math.ceil(pages / 2) if pages >= DUPLEX_THRESHOLD_PAGES else pages
+    # 無條件進位：書背略寬還裝得上，略窄就裝不上。
+    # Rounded up: a spine a shade too wide still binds, one a shade too narrow
+    # does not.
+    return math.ceil(sheets * PAPER_THICKNESS_MM + PAPERBACK_BINDING_MM + board_mm - 1e-9)
 
 
 # --- Placing the text ------------------------------------------------------
@@ -1215,18 +1164,18 @@ def write_odt(
 # --- Driving the two bindings ----------------------------------------------
 
 
-def spine_metadata(text: SpineText, binding: Binding, thickness: Thickness) -> dict[str, str]:
+def spine_metadata(text: SpineText, name_zh: str, width_mm: float) -> dict[str, str]:
     return {
-        "title": f"{text.university}{text.degree}書側（{binding.name_zh}）",
+        "title": f"{text.university}{text.degree}書側（{name_zh}）",
         "author": text.author,
         "subject": f"{text.university}{text.institute}{text.degree}書側",
-        "keywords": f"{binding.name_zh}; 書背寬 {thickness.width_mm:g} mm",
+        "keywords": f"{name_zh}; 書背寬 {width_mm:g} mm",
         "producer": "scripts/make_spine.py",
     }
 
 
-def describe(binding: Binding, thickness: Thickness, spine: Spine, written: list[Path]) -> None:
-    print(f"{binding.name_zh} ({binding.key}): {thickness.width_mm:g} mm wide")
+def describe(name_zh: str, key: str, width_mm: float, spine: Spine, written: list[Path]) -> None:
+    print(f"{name_zh} ({key}): {width_mm:g} mm wide")
     for block in spine.blocks:
         note = " (shrunk to fit)" if block.shrunk else ""
         print(f"  {block.name:<9} {block.size_pt:g} pt{note}  {' / '.join(block.texts)}")
@@ -1235,7 +1184,7 @@ def describe(binding: Binding, thickness: Thickness, spine: Spine, written: list
 
 
 def build(args: argparse.Namespace) -> None:
-    source = args.input.resolve()
+    source = PROJECT_ROOT / "main.pdf"
     if not source.is_file():
         raise CollectionError(f"No such PDF: {source}. Run `pixi run build` first.")
     with pymupdf.open(source) as document:
@@ -1266,43 +1215,30 @@ def build(args: argparse.Namespace) -> None:
             "to print.",
             font_file.name,
         )
-    embedding = embeddable_font(font_file, text.characters(), shipped)
+    face, editable, subsettable = embeddable_font(font_file, text.characters(), shipped)
     family = font_names(font_file)[0]
     # The ODT keeps the face as it is, because an office suite picks the
     # vertical forms itself; the PDF carries a copy that has already picked
     # them, and both are measured with the same advances.
-    drawn = drawn_face(embedding.face, vertical_forms(font_file, text.characters()))
+    drawn = drawn_face(face, vertical_forms(font_file, text.characters()))
     ruler = pymupdf.Font(fontbuffer=drawn)
 
-    for binding in BINDINGS:
-        if args.binding not in ("both", binding.key):
-            continue
-        thickness = measure(pages, binding, measured_mm=args.paperback_width)
-        spine = lay_out(text, mm(thickness.width_mm), ruler)
-        metadata = spine_metadata(text, binding, thickness)
-        # Appended, not substituted: a thesis called thesis.final.pdf would
-        # otherwise have Path.with_suffix take ".final-spine-paperback" for an
-        # extension and write every file of both bindings over one another.
-        stem = f"{source.stem}-spine-{binding.key}"
+    for key, name_zh, board_mm in BINDINGS:
+        width_mm = spine_width_mm(pages, board_mm, args.paperback_width)
+        spine = lay_out(text, mm(width_mm), ruler)
+        metadata = spine_metadata(text, name_zh, width_mm)
+        stem = f"{source.stem}-spine-{key}"
         odt, pdf = args.output_dir / f"{stem}.odt", args.output_dir / f"{stem}.pdf"
-        write_odt(spine, family, embedding.face if embedding.editable else None, metadata, odt)
-        write_pdf(spine, ruler, metadata, pdf, embedding.subsettable)
-        describe(binding, thickness, spine, [odt, pdf])
+        write_odt(spine, family, face if editable else None, metadata, odt)
+        write_pdf(spine, ruler, metadata, pdf, subsettable)
+        describe(name_zh, key, width_mm, spine, [odt, pdf])
 
 
 def arguments() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "input", nargs="?", type=Path, default=DEFAULT_INPUT,
-        help="built thesis PDF, for its page count (default: main.pdf)",
-    )
-    parser.add_argument(
         "-o", "--output-dir", type=Path, default=PROJECT_ROOT,
         help="where to write the four files (default: the project root)",
-    )
-    parser.add_argument(
-        "--binding", choices=("both", "paperback", "hardcover"), default="both",
-        help="which binding to write (default: both)",
     )
     parser.add_argument(
         "--paperback-width", type=float, metavar="MM",

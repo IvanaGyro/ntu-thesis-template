@@ -13,7 +13,6 @@ value per key, already free of the line breaks a typeset cover puts in.
 
 from __future__ import annotations
 
-import logging
 import re
 from pathlib import Path
 
@@ -56,23 +55,6 @@ def braced_group(text: str, opening: int) -> tuple[str, int]:
     raise CollectionError("Unbalanced braces while parsing LaTeX")
 
 
-# 會印出文字的控制序列，換成它們印出的字。
-# The control sequences that put something on the page. What is left after
-# these is markup -- \par, \\, \, and the like -- and dropping that is right;
-# dropping one of these would quietly take a word out of a title.
-TEXT_COMMANDS = {
-    r"\LaTeXe": "LaTeX2e",
-    r"\XeLaTeX": "XeLaTeX",
-    r"\LaTeX": "LaTeX",
-    r"\TeX": "TeX",
-    r"\ldots": "…",
-    r"\dots": "…",
-    r"\textbackslash": "\\",
-    r"\textasciitilde": "~",
-    r"\textasciicircum": "^",
-}
-
-
 def latex_to_plain(text: str) -> str:
     """What a value says once the markup around it is taken off."""
     text = strip_comments(text)
@@ -98,31 +80,8 @@ def latex_to_plain(text: str) -> str:
     }.items():
         text = text.replace(source, target)
     text = re.sub(r"\\[(),\[\]]", "", text).replace("$", "")
-    # Every remaining control sequence in one pass, so that what a command
-    # sets cannot be mistaken for markup by the pass after it. Most of them
-    # print nothing outside a paragraph and taking them out is the point; one
-    # that would have printed something is a word gone missing from a title,
-    # so it is said out loud rather than swallowed.
-    dropped: list[str] = []
-
-    def printed(found: re.Match[str]) -> str:
-        command = found.group(1)
-        if command == "\\\\":  # a forced break, which is a space on one line
-            return " "
-        if command in TEXT_COMMANDS:
-            return TEXT_COMMANDS[command]
-        dropped.append(command)
-        return ""
-
-    written = re.sub(r"(\\\\|\\[A-Za-z@]+\*?)\s*(?:\{\})?", printed, text)
-    if dropped:
-        logging.warning(
-            "Dropped %s from %r, which prints nothing here. Write what it sets "
-            "as plain text if the cover needs it.",
-            ", ".join(sorted(set(dropped))),
-            collapse_spaces(text),
-        )
-    return written.replace("{", "").replace("}", "")
+    text = re.sub(r"\\[A-Za-z@]+\*?", "", text)
+    return text.replace("{", "").replace("}", "")
 
 
 def collapse_spaces(text: str) -> str:
@@ -130,7 +89,27 @@ def collapse_spaces(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-VALUE = re.compile(r"([A-Za-z][\w*-]*)\s*=\s*\{")
+KEY = re.compile(r"([A-Za-z][\w*-]*)\s*=\s*")
+
+
+def key_values(block: str) -> dict[str, str]:
+    """The key=value pairs of a keyval list, as the class's own parser reads it.
+
+    A value may be wrapped in braces, which the parser takes off and which is
+    also how a value holds the comma that would otherwise end it; a value
+    without them runs to the next comma.
+    """
+    values: dict[str, str] = {}
+    cursor = 0
+    while match := KEY.search(block, cursor):
+        if block[match.end() : match.end() + 1] == "{":
+            value, cursor = braced_group(block, match.end())
+        else:
+            cursor = block.find(",", match.end())
+            cursor = len(block) if cursor < 0 else cursor
+            value = block[match.end() : cursor]
+        values[match.group(1)] = value.strip()
+    return values
 
 
 def parse_ntusetup(path: Path) -> dict[str, str]:
@@ -140,12 +119,7 @@ def parse_ntusetup(path: Path) -> dict[str, str]:
     if not marker:
         raise CollectionError(f"Could not find \\ntusetup in {path}")
     block, _ = braced_group(text, marker.end() - 1)
-    values: dict[str, str] = {}
-    cursor = 0
-    while match := VALUE.search(block, cursor):
-        value, cursor = braced_group(block, match.end() - 1)
-        values[match.group(1)] = latex_to_plain(value).strip()
-    return values
+    return {key: latex_to_plain(value).strip() for key, value in key_values(block).items()}
 
 
 def class_options(path: Path) -> dict[str, str]:
@@ -158,19 +132,4 @@ def class_options(path: Path) -> dict[str, str]:
     if not re.search(r"\\documentclass\s*(\[.*?\])?\s*\{ntuthesis\}", text, re.DOTALL):
         raise CollectionError(f"Could not find \\documentclass{{ntuthesis}} in {path}")
     given = re.search(r"\\documentclass\s*\[(.*?)\]\s*\{ntuthesis\}", text, re.DOTALL)
-    if not given:
-        return {}
-    # A value may be wrapped in braces -- `degree = {doctor}` -- which the
-    # class's own key-value parser takes off before it looks at the value, and
-    # which also lets a value hold the comma that would otherwise end it.
-    options, cursor = given.group(1), 0
-    values: dict[str, str] = {}
-    while match := re.compile(r"([A-Za-z][\w*-]*)\s*=\s*").search(options, cursor):
-        if options[match.end() : match.end() + 1] == "{":
-            value, cursor = braced_group(options, match.end())
-        else:
-            cursor = options.find(",", match.end())
-            cursor = len(options) if cursor < 0 else cursor
-            value = options[match.end() : cursor]
-        values[match.group(1)] = value.strip()
-    return values
+    return key_values(given.group(1)) if given else {}

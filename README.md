@@ -208,9 +208,12 @@ writes an editable ODT and a print-ready PDF for each binding:
 
 ```bash
 pixi run spine                          # main.pdf -> main-spine-{paperback,hardcover}.{odt,pdf}
-pixi run spine -- --binding hardcover   # one binding only
 pixi run spine -- --paperback-width 8   # a 平裝 thickness you measured yourself, in mm
+pixi run spine -- -o artwork            # write them somewhere else
 ```
+
+Run it after `pixi run build`: the width comes from `main.pdf`'s page count and
+the words from the source beside it.
 
 ### How wide
 
