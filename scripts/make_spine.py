@@ -23,7 +23,7 @@ import subprocess
 import sys
 import unicodedata
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
@@ -291,25 +291,27 @@ def font_names(font: FontFile) -> tuple[str, ...]:
         return ()
 
 
-def installed_fonts() -> list[FontFile]:
-    """Every face fontconfig knows about, collections expanded."""
+def matched_font(family: str) -> FontFile | None:
+    """The file fontconfig answers a request for `family` with.
+
+    `fc-match`, not `fc-list`: the build asks fontconfig to match a family and
+    is given one face, while a listing is in no particular order and holds
+    every style the family has. Fontconfig always answers something, so the
+    caller still has to ask the file whether it is the face wanted.
+    """
     try:
-        listed = subprocess.run(
-            ["fc-list", "--format=%{file}\t%{index}\n"],
+        matched = subprocess.run(
+            ["fc-match", "--format=%{file}\t%{index}\n", f"{family}:style=Regular"],
             capture_output=True,
             text=True,
         )
     except OSError:
-        logging.debug("No fc-list on this machine, so only the shipped faces are known.")
-        return []
-    if listed.returncode != 0:
-        return []
-    found = []
-    for row in listed.stdout.splitlines():
-        path, _, index = row.partition("\t")
-        if path:
-            found.append(FontFile(Path(path), int(index) if index.isdigit() else 0))
-    return found
+        logging.debug("No fc-match on this machine, so only the shipped faces are known.")
+        return None
+    path, _, index = matched.stdout.strip().partition("\t")
+    if matched.returncode != 0 or not path:
+        return None
+    return FontFile(Path(path), int(index) if index.isdigit() else 0)
 
 
 # 中文字型的來源，抄自 ntuthesis.cls 的 fontset 與 cjkfont 分支。
@@ -328,9 +330,9 @@ def locate_font(options: dict[str, str], root: Path) -> FontFile:
     fontset = options.get("fontset", "default")
     if fontset in CJK_FAMILIES:
         family = CJK_FAMILIES[fontset]
-        for candidate in installed_fonts():
-            if any(same_font(family, found) for found in font_names(candidate)):
-                return candidate
+        candidate = matched_font(family)
+        if candidate and any(same_font(family, found) for found in font_names(candidate)):
+            return candidate
         raise CollectionError(
             f"main.tex builds with fontset = {fontset}, which sets Chinese in "
             f"{family}, and no such face is installed on this machine. Install "
@@ -431,6 +433,39 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[byt
     return written.getvalue(), editable, not rights & FSTYPE_NO_SUBSETTING
 
 
+def composed(text: SpineText, font: FontFile) -> SpineText:
+    """The words as the face will set them, mark by mark.
+
+    A combining mark is folded into the character before it wherever the face
+    has the composed form, because that is what HarfBuzz does when it sets
+    the cover and what an office suite does with the ODT, and one slot is
+    what it then takes. Where there is no composed form the components stand:
+    the 全字庫 faces carry the Hangul jamo and none of the syllables.
+
+    Before the glyph check and before the subset, so that the composed
+    character is the one looked for and the one carried.
+    """
+    with font.open(lazy=True) as opened:
+        table = opened.getBestCmap()
+
+    def fold(line: str) -> str:
+        written = ""
+        for character in line:
+            joined = unicodedata.normalize("NFC", written[-1:] + character) if written else ""
+            written = written[:-1] + joined if len(joined) == 1 and ord(joined) in table \
+                else written + character
+        return written
+
+    return replace(
+        text,
+        university=fold(text.university),
+        institute=fold(text.institute),
+        degree=fold(text.degree),
+        title=fold(text.title),
+        author=fold(text.author),
+    )
+
+
 def missing_characters(font: FontFile, characters: str) -> str:
     with font.open(lazy=True) as opened:
         table = opened.getBestCmap()
@@ -506,29 +541,10 @@ class Run:
     advance: float  # in em, so that a point size scales it
 
 
-def shaped(line: str, ruler: pymupdf.Font) -> str:
-    """The line as the shaper will set it, mark by mark.
-
-    A combining mark is folded into the character before it wherever the face
-    has the composed form, because that is what HarfBuzz does when it sets
-    the cover and the ODT, and one slot is what it then takes. Where the face
-    has no composed form the components stand as they are -- the 全字庫 faces
-    carry the Hangul jamo and none of the syllables they compose into.
-    """
-    written = ""
-    for character in line:
-        joined = unicodedata.normalize("NFC", written[-1:] + character) if written else ""
-        if len(joined) == 1 and ruler.has_glyph(ord(joined)):
-            written = written[:-1] + joined
-        else:
-            written += character
-    return written
-
-
 def split_runs(line: str, ruler: pymupdf.Font) -> tuple[Run, ...]:
     """Break a line into upright characters and turned Latin runs."""
     runs: list[Run] = []
-    for character in shaped(line, ruler):
+    for character in line:
         if upright(character):
             runs.append(Run(character, False, 1.0))
             continue
@@ -1220,9 +1236,9 @@ def build(args: argparse.Namespace) -> None:
             )
         pages = document.page_count
 
-    text = read_spine_text(PROJECT_ROOT)
     font_file = locate_font(class_options(PROJECT_ROOT / "main.tex"), PROJECT_ROOT)
     logging.info("The thesis sets Chinese in %s", font_file.path)
+    text = composed(read_spine_text(PROJECT_ROOT), font_file)
     absent = missing_characters(font_file, text.characters())
     if absent:
         raise CollectionError(f"{font_file.name} has no glyph for {absent!r}.")
@@ -1281,10 +1297,12 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     # fontTools narrates every table it touches; only its complaints matter here.
     logging.getLogger("fontTools").setLevel(logging.WARNING)
-    if args.paperback_width is not None and args.paperback_width <= 0:
+    if args.paperback_width is not None and not (
+        math.isfinite(args.paperback_width) and args.paperback_width > 0
+    ):
         # A hardcover adds its boards to whatever this says, so a negative
         # measurement would come out the other side looking like a real width.
-        logging.error("--paperback-width must be positive.")
+        logging.error("--paperback-width must be a positive number of millimetres.")
         return 1
     args.output_dir.mkdir(parents=True, exist_ok=True)
     try:
