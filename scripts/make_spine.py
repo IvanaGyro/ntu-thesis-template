@@ -21,9 +21,8 @@ import os
 import re
 import subprocess
 import sys
-import unicodedata
 import zipfile
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
@@ -205,13 +204,7 @@ class SpineText:
 
 
 def value(setup: dict[str, str], key: str) -> str:
-    """One \ntusetup value, as the class would set it.
-
-    Code points untouched: what the source was written with is what the cover
-    was set from, and composing a decomposed sequence here could ask the face
-    for a character it does not have -- the 全字庫 faces carry the Hangul
-    jamo but not the syllables they compose into.
-    """
+    """One \ntusetup value, as the class would set it: 讀到什麼是什麼."""
     return collapse_spaces(setup.get(key, ""))
 
 
@@ -431,39 +424,6 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[byt
     # The face, whether it may travel inside a document that can be edited,
     # and whether it may be cut down further.
     return written.getvalue(), editable, not rights & FSTYPE_NO_SUBSETTING
-
-
-def composed(text: SpineText, font: FontFile) -> SpineText:
-    """The words as the face will set them, mark by mark.
-
-    A combining mark is folded into the character before it wherever the face
-    has the composed form, because that is what HarfBuzz does when it sets
-    the cover and what an office suite does with the ODT, and one slot is
-    what it then takes. Where there is no composed form the components stand:
-    the 全字庫 faces carry the Hangul jamo and none of the syllables.
-
-    Before the glyph check and before the subset, so that the composed
-    character is the one looked for and the one carried.
-    """
-    with font.open(lazy=True) as opened:
-        table = opened.getBestCmap()
-
-    def fold(line: str) -> str:
-        written = ""
-        for character in line:
-            joined = unicodedata.normalize("NFC", written[-1:] + character) if written else ""
-            written = written[:-1] + joined if len(joined) == 1 and ord(joined) in table \
-                else written + character
-        return written
-
-    return replace(
-        text,
-        university=fold(text.university),
-        institute=fold(text.institute),
-        degree=fold(text.degree),
-        title=fold(text.title),
-        author=fold(text.author),
-    )
 
 
 def missing_characters(font: FontFile, characters: str) -> str:
@@ -1238,7 +1198,7 @@ def build(args: argparse.Namespace) -> None:
 
     font_file = locate_font(class_options(PROJECT_ROOT / "main.tex"), PROJECT_ROOT)
     logging.info("The thesis sets Chinese in %s", font_file.path)
-    text = composed(read_spine_text(PROJECT_ROOT), font_file)
+    text = read_spine_text(PROJECT_ROOT)
     absent = missing_characters(font_file, text.characters())
     if absent:
         raise CollectionError(f"{font_file.name} has no glyph for {absent!r}.")
