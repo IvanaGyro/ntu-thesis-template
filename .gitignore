@@ -24,8 +24,8 @@ __pycache__/
 /main.pdf
 /main-cover.pdf
 /main-protected.pdf
-/main-spine-*.odt
-/main-spine-*.pdf
+/main-spine*.odt
+/main-spine*.pdf
 
 # Proprietary fonts a user drops in for fontset=template belong to them, not to
 # this repository — see fonts/README.md. The freely licensed fonts the template

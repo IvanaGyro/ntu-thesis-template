@@ -207,9 +207,9 @@ finished book's exact thickness. `pixi run spine` measures the thesis and
 writes an editable ODT and a print-ready PDF for each binding:
 
 ```bash
-pixi run spine                          # main.pdf -> main-spine-{paperback,hardcover}.{odt,pdf}
-pixi run spine -- --paperback-width 8   # a 平裝 thickness you measured yourself, in mm
-pixi run spine -- -o artwork            # write them somewhere else
+pixi run spine                # main.pdf -> main-spine-{paperback,hardcover}.{odt,pdf}
+pixi run spine -- --width 8   # one artwork at a thickness you measured, in mm
+pixi run spine -- -o artwork  # write them somewhere else
 ```
 
 Run it after `pixi run build`: the width comes from `main.pdf`'s page count and
@@ -222,9 +222,9 @@ pages and one per two from there up (單面 or 雙面 printing), each sheet 0.10
 of 80 磅道林紙, plus 1 mm for the 平裝 cover and its glue, plus 4 mm of board
 for 精裝, rounded up to the next whole millimetre.
 
-Once you have a bound copy in hand, measure the **平裝** one and pass
-`--paperback-width`; the hardcover always adds its boards to that, so measure
-the paperback even when only the hardcover is being written.
+Both bindings are written every time. Once you have a bound copy in hand,
+measure it and pass `--width`: that writes one artwork, `main-spine.odt` and
+`main-spine.pdf`, at exactly the thickness you give.
 
 ### What it says
 

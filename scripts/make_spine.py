@@ -498,21 +498,25 @@ class Run:
 
     text: str
     turned: bool
-    advance: float  # in em, so that a point size scales it
+    glyphs: tuple[Shaped, ...]
+
+    @property
+    def advance(self) -> float:
+        """How far the pen moves over the run, in em, so a point size scales it."""
+        return sum(glyph.advance for glyph in self.glyphs)
 
 
-def split_runs(line: str, ruler: pymupdf.Font) -> tuple[Run, ...]:
+def split_runs(line: str, shaper: Shaper) -> tuple[Run, ...]:
     """Break a line into upright characters and turned Latin runs."""
     runs: list[Run] = []
     for character in line:
         if upright(character):
-            runs.append(Run(character, False, 1.0))
-            continue
-        if runs and runs[-1].turned:
+            runs.append(Run(character, False, shaper.shape(character, True)))
+        elif runs and runs[-1].turned:
             grown = runs[-1].text + character
-            runs[-1] = Run(grown, True, ruler.text_length(grown, fontsize=1.0))
+            runs[-1] = Run(grown, True, shaper.shape(grown, False))
         else:
-            runs.append(Run(character, True, ruler.text_length(character, fontsize=1.0)))
+            runs.append(Run(character, True, shaper.shape(character, False)))
     return tuple(runs)
 
 
@@ -664,7 +668,7 @@ def form_foot_pt() -> float:
 
 
 def build_rows(
-    text: SpineText, width_pt: float, ruler: pymupdf.Font, heights: list[float]
+    text: SpineText, width_pt: float, shaper: Shaper, ruler: pymupdf.Font, heights: list[float]
 ) -> Spine:
     """Fill the rows, each block sized to whatever room its own row leaves."""
     rows: list[tuple[float, Block | None]] = []
@@ -672,7 +676,7 @@ def build_rows(
     for (name, _), height in zip(LAYOUT, heights):
         block = None
         if name:
-            lines = tuple(Line(split_runs(line, ruler)) for line in text.block(name))
+            lines = tuple(Line(split_runs(line, shaper)) for line in text.block(name))
             size, pitch = fit_size(name, lines, height, width_pt)
             block = Block(
                 name=name,
@@ -703,9 +707,9 @@ def block_room(block: Block) -> tuple[float, float]:
     return len(block.lines) * block.pitch_pt, leading / 2
 
 
-def lay_out(text: SpineText, width_pt: float, ruler: pymupdf.Font) -> Spine:
+def lay_out(text: SpineText, width_pt: float, shaper: Shaper, ruler: pymupdf.Font) -> Spine:
     """Lay the spine out, stretched to the same extent as the cover's text."""
-    form = build_rows(text, width_pt, ruler, form_heights())
+    form = build_rows(text, width_pt, shaper, ruler, form_heights())
     blocks = form.blocks
     settled = sum(block.ink_bottom_pt - block.ink_top_pt for block in blocks[1:])
     elastic = blocks[0].height_pt + sum(
@@ -748,35 +752,68 @@ def lay_out(text: SpineText, width_pt: float, ruler: pymupdf.Font) -> Spine:
             "Lining the spine up with the cover would run it past the foot of the "
             "form's table."
         )
-    return build_rows(text, width_pt, ruler, heights)
+    return build_rows(text, width_pt, shaper, ruler, heights)
 
 
 # --- The PDF ---------------------------------------------------------------
 
 
-def vertical_forms(font: FontFile, characters: str) -> dict[str, str]:
-    """The glyph a vertical line draws each character with, named."""
-    face = hb.Face(hb.Blob.from_file_path(str(font.path)), font.index)
-    shaper = hb.Font(face)
-    with font.open(lazy=True) as opened:
-        names = opened.getGlyphOrder()
+@dataclass(frozen=True)
+class Shaped:
+    """What HarfBuzz says about one glyph: which it is, and where it goes."""
 
-    def glyphs(character: str, direction: str) -> list[int]:
+    glyph: str
+    advance: float  # em, along the line
+    x_offset: float  # em, across it
+    y_offset: float  # em, up from the pen
+
+
+class Shaper:
+    """HarfBuzz, asked how the face sets a line.
+
+    The same shaper an office suite lays the ODT out with, so what it says
+    about a glyph -- which form a vertical line takes, how far the pen moves,
+    and where the glyph sits against that pen -- is what both files use.
+    """
+
+    def __init__(self, font: FontFile) -> None:
+        face = hb.Face(hb.Blob.from_file_path(str(font.path)), font.index)
+        self.upem = face.upem
+        self.font = hb.Font(face)
+        with font.open(lazy=True) as opened:
+            self.names = opened.getGlyphOrder()
+
+    def shape(self, text: str, down: bool) -> tuple[Shaped, ...]:
         buffer = hb.Buffer()
-        buffer.add_str(character)
+        buffer.add_str(text)
         buffer.guess_segment_properties()
-        buffer.direction = direction
-        hb.shape(shaper, buffer)
-        return [info.codepoint for info in buffer.glyph_infos]
+        buffer.direction = "ttb" if down else "ltr"
+        hb.shape(self.font, buffer)
+        return tuple(
+            Shaped(
+                self.names[info.codepoint],
+                (-place.y_advance if down else place.x_advance) / self.upem,
+                place.x_offset / self.upem,
+                place.y_offset / self.upem,
+            )
+            for info, place in zip(buffer.glyph_infos, buffer.glyph_positions)
+        )
 
-    forms = {}
-    for character in characters:
-        if not upright(character):
-            continue
-        down, across = glyphs(character, "ttb"), glyphs(character, "ltr")
-        if len(down) == 1 and down != across:
-            forms[character] = names[down[0]]
-    return forms
+    def vertical_forms(self, characters: str) -> dict[str, str]:
+        """Each upright character that a vertical line draws with another glyph.
+
+        Only what stands upright is asked about: a turned run is drawn from
+        the horizontal form and rotated, so a vertical form folded into one of
+        those would be turned twice.
+        """
+        forms = {}
+        for character in characters:
+            if not upright(character):
+                continue
+            down, across = self.shape(character, True), self.shape(character, False)
+            if len(down) == 1 and down[0].glyph != across[0].glyph:
+                forms[character] = down[0].glyph
+        return forms
 
 
 def drawn_face(font_bytes: bytes, forms: dict[str, str]) -> bytes:
@@ -826,17 +863,19 @@ def write_pdf(
                     if run.turned:
                         turned.append(draw_turned(run, offset, centre, block, font, page))
                         continue
-                    for position, character in enumerate(run.text):
-                        advance = font.glyph_advance(ord(character)) * block.size_pt
-                        upright_text.append(
-                            pymupdf.Point(
-                                centre - advance / 2,
-                                offset + position * block.size_pt + block.ascent * block.size_pt,
-                            ),
-                            character,
-                            font=font,
-                            fontsize=block.size_pt,
-                        )
+                    # Where HarfBuzz puts the glyph against the pen: across
+                    # the column by x_offset, and up from it by y_offset,
+                    # which on a page whose y grows downward is a descent.
+                    glyph = run.glyphs[0]
+                    upright_text.append(
+                        pymupdf.Point(
+                            centre + glyph.x_offset * block.size_pt,
+                            offset - glyph.y_offset * block.size_pt,
+                        ),
+                        run.text,
+                        font=font,
+                        fontsize=block.size_pt,
+                    )
         upright_text.write_text(page)
         for writer, pivot in turned:
             writer.write_text(page, morph=(pivot, pymupdf.Matrix(-90)))
@@ -878,7 +917,24 @@ def draw_turned(
     """Queue one Latin run, laid out horizontally for a quarter turn clockwise."""
     pivot = pymupdf.Point(centre - block.size_pt * (font.ascender + font.descender) / 2, offset)
     writer = pymupdf.TextWriter(page.rect)
-    writer.append(pivot, run.text, font=font, fontsize=block.size_pt)
+    if len(run.glyphs) != len(run.text):
+        # A ligature or a mark left the shaper with its own count of glyphs,
+        # and the pen positions no longer line up with the characters; the
+        # writer lays the run out itself rather than being placed wrongly.
+        writer.append(pivot, run.text, font=font, fontsize=block.size_pt)
+        return writer, pivot
+    pen = 0.0
+    for glyph, character in zip(run.glyphs, run.text):
+        writer.append(
+            pymupdf.Point(
+                pivot.x + (pen + glyph.x_offset) * block.size_pt,
+                pivot.y - glyph.y_offset * block.size_pt,
+            ),
+            character,
+            font=font,
+            fontsize=block.size_pt,
+        )
+        pen += glyph.advance
     return writer, pivot
 
 
@@ -1167,16 +1223,16 @@ def write_odt(
 
 def spine_metadata(text: SpineText, name_zh: str, width_mm: float) -> dict[str, str]:
     return {
-        "title": f"{text.university}{text.degree}書側（{name_zh}）",
+        "title": f"{text.university}{text.degree}書側" + (f"（{name_zh}）" if name_zh else ""),
         "author": text.author,
         "subject": f"{text.university}{text.institute}{text.degree}書側",
-        "keywords": f"{name_zh}; 書背寬 {width_mm:g} mm",
+        "keywords": (f"{name_zh}; " if name_zh else "") + f"書背寬 {width_mm:g} mm",
         "producer": "scripts/make_spine.py",
     }
 
 
-def describe(name_zh: str, key: str, width_mm: float, spine: Spine, written: list[Path]) -> None:
-    print(f"{name_zh} ({key}): {width_mm:g} mm wide")
+def describe(label: str, width_mm: float, spine: Spine, written: list[Path]) -> None:
+    print(f"{label}: {width_mm:g} mm wide")
     for block in spine.blocks:
         note = " (shrunk to fit)" if block.shrunk else ""
         print(f"  {block.name:<9} {block.size_pt:g} pt{note}  {' / '.join(block.texts)}")
@@ -1221,18 +1277,25 @@ def build(args: argparse.Namespace) -> None:
     # The ODT keeps the face as it is, because an office suite picks the
     # vertical forms itself; the PDF carries a copy that has already picked
     # them, and both are measured with the same advances.
-    drawn = drawn_face(face, vertical_forms(font_file, text.characters()))
+    shaper = Shaper(font_file)
+    drawn = drawn_face(face, shaper.vertical_forms(text.characters()))
     ruler = pymupdf.Font(fontbuffer=drawn)
 
-    for key, name_zh, board_mm in BINDINGS:
-        width_mm = spine_width_mm(pages, board_mm, args.paperback_width)
-        spine = lay_out(text, mm(width_mm), ruler)
+    # 沒有指定寬度就平裝、精裝各出一份；指定了就只出那一份。
+    # Both bindings unless a width is given, and only that one when it is.
+    wanted = (
+        [("", "", args.width)]
+        if args.width
+        else [(key, name, spine_width_mm(pages, board, None)) for key, name, board in BINDINGS]
+    )
+    for key, name_zh, width_mm in wanted:
+        spine = lay_out(text, mm(width_mm), shaper, ruler)
         metadata = spine_metadata(text, name_zh, width_mm)
-        stem = f"{source.stem}-spine-{key}"
+        stem = f"{source.stem}-spine-{key}" if key else f"{source.stem}-spine"
         odt, pdf = args.output_dir / f"{stem}.odt", args.output_dir / f"{stem}.pdf"
         write_odt(spine, family, face if editable else None, metadata, odt)
         write_pdf(spine, ruler, metadata, pdf, subsettable)
-        describe(name_zh, key, width_mm, spine, [odt, pdf])
+        describe(f"{name_zh} ({key})" if key else "書側 (the width you gave)", width_mm, spine, [odt, pdf])
 
 
 def arguments() -> argparse.ArgumentParser:
@@ -1242,11 +1305,11 @@ def arguments() -> argparse.ArgumentParser:
         help="where to write the four files (default: the project root)",
     )
     parser.add_argument(
-        "--paperback-width", type=float, metavar="MM",
+        "--width", type=float, metavar="MM",
         help=(
-            "the 平裝 copy's own measured thickness in mm, used instead of the "
-            "computed one; 精裝 is always this plus its boards, so measure the "
-            "paperback even when writing the hardcover"
+            "the finished spine's own thickness in mm, measured off a bound "
+            "copy; one artwork is written at exactly that width instead of the "
+            "two the page count computes"
         ),
     )
     return parser
@@ -1257,12 +1320,8 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     # fontTools narrates every table it touches; only its complaints matter here.
     logging.getLogger("fontTools").setLevel(logging.WARNING)
-    if args.paperback_width is not None and not (
-        math.isfinite(args.paperback_width) and args.paperback_width > 0
-    ):
-        # A hardcover adds its boards to whatever this says, so a negative
-        # measurement would come out the other side looking like a real width.
-        logging.error("--paperback-width must be a positive number of millimetres.")
+    if args.width is not None and not (math.isfinite(args.width) and args.width > 0):
+        logging.error("--width must be a positive number of millimetres.")
         return 1
     args.output_dir.mkdir(parents=True, exist_ok=True)
     try:
