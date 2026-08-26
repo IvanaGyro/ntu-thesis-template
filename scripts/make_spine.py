@@ -831,30 +831,19 @@ class Shaper:
 
 
 def single_family(face: TTFont, family: str) -> None:
-    """Leave the face answering to one family name, whatever the locale.
+    """Give the embedded copy one family name, independent of locale.
 
-    A face may name its family once per language -- TW-Sung calls itself
-    `TW-Sung` in English and 全字庫正宋體 in Chinese -- and a platform reports
-    the name for its own locale: Windows in Taiwan registers the embedded copy
-    as 全字庫正宋體, while the ODT asks for `TW-Sung`, finds nothing, and
-    letters the spine in whatever it falls back to. Naming both in
-    `svg:font-family` does not help, since an office suite reads that as one
-    name and not as a list. So the copy that travels inside the document keeps
-    the one name the document asks for.
+    A face may name its family once per language -- TW-Sung is `TW-Sung` in
+    English and 全字庫正宋體 in Chinese -- and a platform registers the name
+    for its own locale, so Windows in Taiwan knew the embedded copy by a name
+    the ODT never asks for and lettered the spine in MS-UIGothic instead.
+    Naming both in `svg:font-family` does not help: an office suite reads that
+    value as one name, not as a list. Only the family is rewritten, since that
+    is what a font manager registers; the full name stays as published.
     """
-    table = face["name"]
-    kept = []
-    for record in table.names:
-        if record.nameID not in (1, 4, 16):
-            kept.append(record)
-            continue
-        try:
-            named = record.toUnicode()
-        except UnicodeDecodeError:
-            continue
-        if named == family:
-            kept.append(record)
-    table.names = kept
+    for record in face["name"].names:
+        if record.nameID in (1, 16):
+            record.string = family.encode(record.getEncoding())
 
 
 def drawn_face(font_bytes: bytes, forms: dict[str, str]) -> bytes:
