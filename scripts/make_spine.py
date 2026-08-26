@@ -393,6 +393,12 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[byt
     # an office suite applies it to the ODT itself, and the PDF's copy of the
     # face is this one with those glyphs already put in place.
     options.layout_features = ["*"]
+    # A subset is written with a post 3.0 table by default, which carries no
+    # glyph names, and a reader then names each glyph after the character that
+    # maps to it. The vertical forms are reached through `vert` and not through
+    # the cmap, so that leaves them nameless and `drawn_face` cannot find the
+    # one it was told to put in place.
+    options.glyph_names = True
     options.name_IDs = ["*"]
     options.name_legacy = True
     options.name_languages = ["*"]
@@ -812,12 +818,19 @@ class Shaper:
 def drawn_face(font_bytes: bytes, forms: dict[str, str]) -> bytes:
     """The copy of the face the PDF draws from, with two corrections."""
     face = TTFont(io.BytesIO(font_bytes))
-    kept = set(face.getGlyphOrder())
+    absent = sorted(set(forms.values()) - set(face.getGlyphOrder()))
+    if absent:
+        # Better to stop than to letter the horizontal form in a vertical line,
+        # which is a difference only a reader of the finished sheet would catch.
+        raise CollectionError(
+            f"The vertical forms {', '.join(absent)} are not in the face the PDF "
+            "draws from, though the face shapes with them."
+        )
     turned = 0
     for table in face["cmap"].tables:
         for code, name in list(table.cmap.items()):
             wanted = forms.get(chr(code))
-            if wanted and wanted in kept and name != wanted:
+            if wanted and name != wanted:
                 table.cmap[code] = wanted
                 turned += 1
     if turned:
