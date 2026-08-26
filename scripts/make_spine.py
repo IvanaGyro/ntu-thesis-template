@@ -454,20 +454,6 @@ def spine_width_mm(pages: int, board_mm: float, measured_mm: float | None) -> fl
 # advances at its own width, and punctuation takes the shape `vert` gives it.
 
 
-# 直書時哪些字要正放、哪些要轉九十度，看 UTR#50 的 Vertical_Orientation。
-# What stands upright in a vertical line is UTR#50's Vertical_Orientation,
-# which `unicodedataplus` carries: U and Tu stand, R and Tr turn. Tr is
-# "transformed, falling back to rotated", and a CJK face gives the wide ones
-# a vertical form that an office suite draws upright, so those stand too.
-# East Asian width cannot stand in for any of it -- × and ° are both
-# ambiguous-width and go opposite ways.
-def upright(character: str) -> bool:
-    orientation = unicodedataplus.vertical_orientation(character)
-    return orientation in ("U", "Tu") or (
-        orientation == "Tr" and unicodedataplus.east_asian_width(character) in ("W", "F")
-    )
-
-
 @dataclass(frozen=True)
 class Run:
     """A stretch of one line that shares an orientation."""
@@ -488,7 +474,7 @@ def split_runs(line: str, shaper: Shaper) -> tuple[Run, ...]:
     # By grapheme cluster: a mark belongs to the character it sits on, and the
     # two take one slot between them rather than one each.
     for cluster in regex.findall(r"\X", line):
-        if upright(cluster[0]):
+        if shaper.upright(cluster):
             runs.append(Run(cluster, False, shaper.shape(cluster, True)))
         elif runs and runs[-1].turned:
             grown = runs[-1].text + cluster
@@ -777,6 +763,25 @@ class Shaper:
             for info, place in zip(buffer.glyph_infos, buffer.glyph_positions)
         )
 
+    def substitutes(self, text: str) -> bool:
+        """Whether a vertical line draws `text` with a glyph of its own."""
+        down = [glyph.glyph for glyph in self.shape(text, True)]
+        return down != [glyph.glyph for glyph in self.shape(text, False)]
+
+    def upright(self, cluster: str) -> bool:
+        """Whether a vertical line stands this cluster up or turns it.
+
+        UTR#50 again: U and Tu stand and R turns, whatever the face holds.
+        Tr is "transformed, falling back to rotated" -- 「 and （ and ： are
+        Tr -- so it stands only where the face has a vertical form to stand
+        it in, and turns where it has none. TW-Kai has one for the brackets
+        and none for ：.
+        """
+        orientation = unicodedataplus.vertical_orientation(cluster[0])
+        if orientation in ("U", "Tu"):
+            return True
+        return orientation == "Tr" and self.substitutes(cluster)
+
     def vertical_forms(self, characters: str) -> dict[str, str]:
         """Each upright character that a vertical line draws with another glyph.
 
@@ -786,10 +791,10 @@ class Shaper:
         """
         forms = {}
         for character in characters:
-            if not upright(character):
+            if not self.upright(character):
                 continue
-            down, across = self.shape(character, True), self.shape(character, False)
-            if len(down) == 1 and down[0].glyph != across[0].glyph:
+            down = self.shape(character, True)
+            if len(down) == 1 and self.substitutes(character):
                 forms[character] = down[0].glyph
         return forms
 
