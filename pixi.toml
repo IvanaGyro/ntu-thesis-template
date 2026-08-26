@@ -18,13 +18,13 @@ openpyxl = ">=3.1,<4"
 matplotlib = ">=3.8,<4"
 fonttools = ">=4.50,<5"
 uharfbuzz = ">=0.56,<1"
-regex = ">=2024.0"
 numpy = ">=1.26,<3"
 
 [pypi-dependencies]
-# 直書方向與書寫體系屬性；conda-forge 沒有這個套件。
-# The Vertical_Orientation property, which conda-forge does not carry.
+# 直書方向屬性，以及認得字素叢集的 \X。
+# The Vertical_Orientation property, and the \X that matches a grapheme.
 unicodedataplus = ">=15.1"
+regex = ">=2024.0"
 
 [tasks]
 setup = { cmd = "python scripts/tex_toolchain.py setup", description = "Install rootless TinyTeX and all thesis TeX packages" }
