@@ -722,6 +722,15 @@ def lay_out(text: SpineText, width_pt: float, shaper: Shaper, ruler: pymupdf.Fon
 # --- The PDF ---------------------------------------------------------------
 
 
+# Six characters LibreOffice reads as Tu when the text is Chinese, whatever
+# UTR#50 has them as: the fullwidth colon and semicolon, which it makes Tr,
+# and the four Bopomofo tone marks, which it makes R. The spine is Chinese,
+# so this is how the ODT is laid out and the PDF has to letter it the same.
+# https://github.com/LibreOffice/core/commit/cd6b70497180dbf0f3f78684e74702c993bbe449
+# https://github.com/LibreOffice/core/commit/b087e451527f2e497ccab83b63b4f10099bfb8b8
+CHINESE_UPRIGHT = "：；ˊˋˇ˙"
+
+
 @dataclass(frozen=True)
 class Shaped:
     """What HarfBuzz says about one glyph: which it is, and where it goes."""
@@ -771,12 +780,13 @@ class Shaper:
     def upright(self, cluster: str) -> bool:
         """Whether a vertical line stands this cluster up or turns it.
 
-        UTR#50 again: U and Tu stand and R turns, whatever the face holds.
-        Tr is "transformed, falling back to rotated" -- 「 and （ and ： are
-        Tr -- so it stands only where the face has a vertical form to stand
-        it in, and turns where it has none. TW-Kai has one for the brackets
-        and none for ：.
+        UTR#50: U and Tu stand and R turns, whatever the face holds. Tr is
+        "transformed, falling back to rotated" -- 「 and （ are Tr -- so it
+        stands only where the face has a vertical form to stand it in, and
+        turns where it has none. TW-Kai has one for the brackets.
         """
+        if cluster[0] in CHINESE_UPRIGHT:
+            return True
         orientation = unicodedataplus.vertical_orientation(cluster[0])
         if orientation in ("U", "Tu"):
             return True
@@ -983,7 +993,11 @@ def text_properties(family: str, size_pt: float) -> str:
     """Set one size in one family, for Western, Asian and complex scripts alike."""
     name, size = quoteattr(family), quoteattr(pt(size_pt))
     return (
-        f"<style:text-properties style:font-name={name} fo:font-family={name} "
+        # The Asian language is what decides CHINESE_UPRIGHT, and an office
+        # suite that is not told falls back to whatever its own default is --
+        # a Japanese one turns the tone marks the spine stands up.
+        '<style:text-properties style:language-asian="zh" style:country-asian="TW" '
+        f"style:font-name={name} fo:font-family={name} "
         f"fo:font-size={size} "
         f"style:font-name-asian={name} style:font-family-asian={name} "
         f"style:font-size-asian={size} "
