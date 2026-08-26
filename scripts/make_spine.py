@@ -13,7 +13,6 @@ to be counted.
 from __future__ import annotations
 
 import argparse
-import bisect
 import io
 import logging
 import math
@@ -28,7 +27,9 @@ from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
 
 import pymupdf
+import regex
 import uharfbuzz as hb
+import unicodedataplus
 from fontTools import subset
 from fontTools.ttLib import TTFont
 
@@ -453,43 +454,18 @@ def spine_width_mm(pages: int, board_mm: float, measured_mm: float | None) -> fl
 # advances at its own width, and punctuation takes the shape `vert` gives it.
 
 
-# What stands upright is UTR#50's Vertical_Orientation, and East Asian width
-# cannot stand in for it: × and ± stand up where ° and → turn, though all four
-# are ambiguous-width. The U and Tu values of `VerticalOrientation-17.txt`
-# (<https://www.unicode.org/Public/vertical/revision-17/>), plus Tr where the
-# character is wide, plus the wide letters added since. Merged, so it bisects.
-UPRIGHT_RANGES = (
-    (0x00A7, 0x00A7), (0x00A9, 0x00A9), (0x00AE, 0x00AE), (0x00B1, 0x00B1),
-    (0x00BC, 0x00BE), (0x00D7, 0x00D7), (0x00F7, 0x00F7), (0x02EA, 0x02EB),
-    (0x1100, 0x11FF), (0x1401, 0x167F), (0x18B0, 0x18FF), (0x2016, 0x2016),
-    (0x2020, 0x2021), (0x2030, 0x2031), (0x203B, 0x203C), (0x2042, 0x2042),
-    (0x2047, 0x2049), (0x2051, 0x2051), (0x2065, 0x2065), (0x20DD, 0x20E0),
-    (0x20E2, 0x20E4), (0x2100, 0x2101), (0x2103, 0x2109), (0x210F, 0x210F),
-    (0x2113, 0x2114), (0x2116, 0x2117), (0x211E, 0x2123), (0x2125, 0x2125),
-    (0x2127, 0x2127), (0x2129, 0x2129), (0x212E, 0x212E), (0x2135, 0x213F),
-    (0x2145, 0x214A), (0x214C, 0x214D), (0x214F, 0x2189), (0x218C, 0x218F),
-    (0x221E, 0x221E), (0x2234, 0x2235), (0x2300, 0x2307), (0x230C, 0x231F),
-    (0x2324, 0x232B), (0x237D, 0x239A), (0x23BE, 0x23CD), (0x23CF, 0x23CF),
-    (0x23D1, 0x23DB), (0x23E2, 0x2422), (0x2424, 0x24FF), (0x25A0, 0x2619),
-    (0x2620, 0x2767), (0x2776, 0x2793), (0x2B12, 0x2B2F), (0x2B50, 0x2B59),
-    (0x2BB8, 0x2BEB), (0x2BF0, 0x2BFF), (0x2E80, 0xA4CF), (0xA960, 0xA97F),
-    (0xAC00, 0xD7FF), (0xE000, 0xFAFF), (0xFE10, 0xFE1F), (0xFE30, 0xFE48),
-    (0xFE50, 0xFE57), (0xFE59, 0xFE62), (0xFE67, 0xFE6F), (0xFF01, 0xFF0C),
-    (0xFF0E, 0xFF1B), (0xFF1F, 0xFF60), (0xFFE0, 0xFFE7), (0xFFF0, 0xFFF8),
-    (0xFFFC, 0xFFFD), (0x10980, 0x1099F), (0x11580, 0x115FF), (0x13000, 0x1342F),
-    (0x14400, 0x1467F), (0x16FE0, 0x18CD5), (0x18D00, 0x18D08), (0x1B000, 0x1B122),
-    (0x1B132, 0x1B132), (0x1B150, 0x1B152), (0x1B155, 0x1B155), (0x1B164, 0x1B167),
-    (0x1B170, 0x1B2FB), (0x1D000, 0x1D1FF), (0x1D300, 0x1D37F), (0x1D800, 0x1DAAF),
-    (0x1F000, 0x1F7FF), (0x1F900, 0x1F9FF), (0x20000, 0x2FFFD), (0x30000, 0x3FFFD),
-    (0xF0000, 0xFFFFD), (0x100000, 0x10FFFD),
-)
-UPRIGHT_STARTS = tuple(start for start, _ in UPRIGHT_RANGES)
-
-
+# 直書時哪些字要正放、哪些要轉九十度，看 UTR#50 的 Vertical_Orientation。
+# What stands upright in a vertical line is UTR#50's Vertical_Orientation,
+# which `unicodedataplus` carries: U and Tu stand, R and Tr turn. Tr is
+# "transformed, falling back to rotated", and a CJK face gives the wide ones
+# a vertical form that an office suite draws upright, so those stand too.
+# East Asian width cannot stand in for any of it -- × and ° are both
+# ambiguous-width and go opposite ways.
 def upright(character: str) -> bool:
-    """Whether a character stands up in a vertical line or turns on its side."""
-    place = bisect.bisect_right(UPRIGHT_STARTS, ord(character)) - 1
-    return place >= 0 and ord(character) <= UPRIGHT_RANGES[place][1]
+    orientation = unicodedataplus.vertical_orientation(character)
+    return orientation in ("U", "Tu") or (
+        orientation == "Tr" and unicodedataplus.east_asian_width(character) in ("W", "F")
+    )
 
 
 @dataclass(frozen=True)
@@ -509,14 +485,16 @@ class Run:
 def split_runs(line: str, shaper: Shaper) -> tuple[Run, ...]:
     """Break a line into upright characters and turned Latin runs."""
     runs: list[Run] = []
-    for character in line:
-        if upright(character):
-            runs.append(Run(character, False, shaper.shape(character, True)))
+    # By grapheme cluster: a mark belongs to the character it sits on, and the
+    # two take one slot between them rather than one each.
+    for cluster in regex.findall(r"\X", line):
+        if upright(cluster[0]):
+            runs.append(Run(cluster, False, shaper.shape(cluster, True)))
         elif runs and runs[-1].turned:
-            grown = runs[-1].text + character
+            grown = runs[-1].text + cluster
             runs[-1] = Run(grown, True, shaper.shape(grown, False))
         else:
-            runs.append(Run(character, True, shaper.shape(character, False)))
+            runs.append(Run(cluster, True, shaper.shape(cluster, False)))
     return tuple(runs)
 
 
