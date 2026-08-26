@@ -406,6 +406,13 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[byt
     # the cmap, so that leaves them nameless and `drawn_face` cannot find the
     # one it was told to put in place.
     options.glyph_names = True
+    # OS/2 says which scripts and code pages the face covers, and a subsetter
+    # cuts those declarations down to what it kept. A spine's two dozen
+    # characters leave a face that no longer claims Chinese, and a reader that
+    # picks the face for a run by that claim -- rather than by asking the cmap
+    # -- then letters the spine in whatever it falls back to.
+    options.prune_unicode_ranges = False
+    options.prune_codepage_ranges = False
     options.name_IDs = ["*"]
     options.name_legacy = True
     options.name_languages = ["*"]
