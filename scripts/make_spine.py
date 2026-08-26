@@ -204,9 +204,16 @@ class SpineText:
         return "".join(sorted(set(joined)))
 
 
+# A variation selector, a joiner and the rest of the invisible characters that
+# only qualify the character before them. A spine has one slot per character
+# and no face has to hold a glyph for these, so what the cover draws for them
+# -- nothing -- is what the spine draws.
+IGNORABLE = regex.compile(r"\p{Default_Ignorable_Code_Point}")
+
+
 def value(setup: dict[str, str], key: str) -> str:
     """One \ntusetup value, as the class would set it: 讀到什麼是什麼."""
-    return collapse_spaces(setup.get(key, ""))
+    return IGNORABLE.sub("", collapse_spaces(setup.get(key, "")))
 
 
 def roc_date(given: str) -> tuple[int, int]:
