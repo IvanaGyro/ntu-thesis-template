@@ -991,6 +991,14 @@ def sfnt_flavour(face: bytes) -> tuple[str, str, str]:
     return ".ttf", "truetype", "application/x-font-ttf"
 
 
+def css_family(family: str) -> str:
+    """A family name as a CSS font-family value."""
+    if not regex.search(r"""[\s,'"]""", family):
+        return family
+    quote = '"' if "'" in family else "'"
+    return f"{quote}{family}{quote}"
+
+
 def font_declaration(family: str, embedded: str | None, flavour: str = "truetype") -> str:
     """Declare the face, pointing at the copy inside the ODT when there is one."""
     source = (
@@ -1003,7 +1011,9 @@ def font_declaration(family: str, embedded: str | None, flavour: str = "truetype
     )
     return (
         f"<office:font-face-decls><style:font-face style:name={quoteattr(family)} "
-        f"""svg:font-family={quoteattr(f"'{family}'")} """
+        # Quoted only where a family name has to be, as an office suite quotes
+        # it in its own files: `'DejaVu Sans'` but `TW-Kai`.
+        f"svg:font-family={quoteattr(css_family(family))} "
         'style:font-family-generic="system" style:font-pitch="variable">'
         f"{source}</style:font-face></office:font-face-decls>"
     )
