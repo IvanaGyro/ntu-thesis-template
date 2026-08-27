@@ -833,13 +833,20 @@ class Shaper:
 def single_family(face: TTFont, family: str) -> None:
     """Give the embedded copy one family name, independent of locale.
 
-    A face may name its family once per language -- TW-Sung is `TW-Sung` in
-    English and 全字庫正宋體 in Chinese -- and a platform registers the name
-    for its own locale, so Windows in Taiwan knew the embedded copy by a name
-    the ODT never asks for and lettered the spine in MS-UIGothic instead.
+    This works around a LibreOffice defect, and can go when that is fixed:
+    tdf#63011, open since 2013, whose own example is this font. A face may
+    name its family once per language -- TW-Kai is `TW-Kai` in English and
+    全字庫正楷體 in Chinese -- and a platform reports the name for its own
+    locale. LibreOffice knows the face by that one name alone, so a document
+    written where the English name shows is not recognised where the Chinese
+    one does: Windows in Taiwan knew the embedded copy as 全字庫正楷體, the
+    ODT asked for `TW-Kai`, and the spine came out in MS-UIGothic.
+
     Naming both in `svg:font-family` does not help: an office suite reads that
     value as one name, not as a list. Only the family is rewritten, since that
     is what a font manager registers; the full name stays as published.
+
+    https://bugs.documentfoundation.org/show_bug.cgi?id=63011
     """
     for record in face["name"].names:
         if record.nameID in (1, 16):
