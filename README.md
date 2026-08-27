@@ -200,6 +200,59 @@ glyph with its font, size, color, and position, the vector drawings, and the
 pixels of every embedded image. Like `protect`, it never runs as part of
 `pixi run build`.
 
+## Spine artwork (書側)
+
+The bindery letters the spine, and to do that it needs the artwork at the
+finished book's exact thickness. `pixi run spine` measures the thesis and
+writes an editable ODT and a print-ready PDF for each binding:
+
+```bash
+pixi run spine                # main.pdf -> main-spine-{paperback,hardcover}.{odt,pdf}
+pixi run spine -- --width 8   # one artwork at a thickness you measured, in mm
+pixi run spine -- -o artwork  # write them somewhere else
+```
+
+Run it after `pixi run build`: the width comes from `main.pdf`'s page count and
+the words from the source beside it.
+
+### How wide
+
+The width follows `main.pdf`'s own page count: one sheet per page below 80
+pages and one per two from there up (單面 or 雙面 printing), each sheet 0.10 mm
+of 80 磅道林紙, plus 1 mm for the 平裝 cover and its glue, plus 4 mm of board
+for 精裝, rounded up to the next whole millimetre.
+
+Both bindings are written every time. Once you have a bound copy in hand,
+measure it and pass `--width`: that writes one artwork, `main-spine.odt` and
+`main-spine.pdf`, at exactly the thickness you give.
+
+### What it says
+
+Every word comes from `main.tex` and `ntusetup.tex` — the degree from the
+class options, the rest from `\ntusetup`, dated today if you leave `date`
+commented out. The layout is the one in NTU's own samples,
+[THESISSAMPLE.doc][zh] and [thesissample_en.doc][en]: 12 pt for the degree,
+14 pt for the title, the author and the date, and the heading at whatever
+size its two columns take. A block that would otherwise run off the artwork
+is set smaller, and the run reports every size it had to shrink.
+
+[zh]: https://www.lib.ntu.edu.tw/doc/cl/THESISSAMPLE.doc
+[en]: https://www.lib.ntu.edu.tw/doc/CL/thesissample_en.doc
+
+The rows are stretched so the spine's first character starts level with the
+cover's first line and its last finishes level with the cover's last.
+
+### Fonts
+
+Both files are set in the very face `main.tex` sets Chinese in: the PDF always
+carries it, and the ODT carries it too unless the face's licence forbids
+embedding in a document that can be edited, in which case the ODT names it and
+the machine that opens it supplies it. What travels is a subset — the
+characters the spine letters — so a print shop can move and resize what is
+there, but typing a new character needs the face installed on their machine.
+
+Like `cover` and `protect`, none of this runs as part of `pixi run build`.
+
 ## Submission
 
 `pixi run protect` writes `main-protected.pdf` from `main.pdf`: an empty user

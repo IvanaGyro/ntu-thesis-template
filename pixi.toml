@@ -16,7 +16,15 @@ pymupdf = ">=1.28.0,<2"
 requests = ">=2.32,<3"
 openpyxl = ">=3.1,<4"
 matplotlib = ">=3.8,<4"
+fonttools = ">=4.50,<5"
+uharfbuzz = ">=0.56,<1"
 numpy = ">=1.26,<3"
+
+[pypi-dependencies]
+# 直書方向屬性，以及認得字素叢集的 \X。
+# The Vertical_Orientation property, and the \X that matches a grapheme.
+unicodedataplus = ">=15.1"
+regex = ">=2024.0"
 
 [tasks]
 setup = { cmd = "python scripts/tex_toolchain.py setup", description = "Install rootless TinyTeX and all thesis TeX packages" }
@@ -25,5 +33,6 @@ build = { cmd = "python scripts/tex_toolchain.py build", depends-on = ["setup"],
 clean = { cmd = "python scripts/tex_toolchain.py clean", description = "Remove LaTeX build artifacts" }
 cover = { cmd = "python scripts/extract_cover.py", description = "Write main-cover.pdf: page 1 of main.pdf alone, stripped of the document-wide objects a cover does not need" }
 protect = { cmd = "python scripts/protect_pdf.py", description = "Write main-protected.pdf: readable by anyone, editing and copying locked behind an owner password" }
+spine = { cmd = "python scripts/make_spine.py", description = "Write the spine artwork (書側) as ODT and PDF, in both 平裝 and 精裝 widths" }
 units = { cmd = "python scripts/fetch_academic_units.py", description = "Refresh ntu-academic-units.tex from NTU's published list of academic units" }
 figures = { cmd = "python scripts/make_example_figures.py", description = "Regenerate the example plots in figures/ (the PDFs are committed; this is not part of build)" }
