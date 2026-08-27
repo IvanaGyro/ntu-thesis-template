@@ -3,15 +3,31 @@ name = "ntu-thesis-template"
 version = "0.1.0"
 description = "Reproducible, rootless build environment for the NTU thesis template"
 channels = ["conda-forge"]
-platforms = ["linux-64"]
+# win-arm64 is left out: conda-forge ships neither perl nor fontconfig for it,
+# and uharfbuzz and unicodedataplus have never published a wheel for it either.
+#
+# linux-aarch64 is left out too: every platform's plain TinyTeX build (the
+# unqualified "TinyTeX-v*" asset pytinytex looks for) ships as .tar.gz/.tgz/
+# .zip except aarch64's, which TinyTeX has only ever published as .tar.xz
+# (linux-x86_64 gets a .tar.xz release too, but its .tar.gz one is what
+# pytinytex actually uses -- aarch64 has no such fallback). pytinytex 0.5.1
+# can neither find a .tar.xz this way (its URL regex only matches
+# tar.gz/tgz/zip) nor extract one (its extractor only opens gzip tarballs) --
+# confirmed by actually running the build on an arm64 Linux CI runner.
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 
 [dependencies]
+# Only what pip cannot install stays here: the interpreter itself, and the
+# system tools latexmk (Perl) and fc-cache shell out to. Everything else goes
+# through PyPI.
 python = "3.12.*"
-pytinytex = "0.5.*"
-pygments = "2.19.*"
 perl = "5.*"
 fontconfig = ">=2.14,<3"
 ca-certificates = "*"
+
+[pypi-dependencies]
+pytinytex = "==0.5.*"
+pygments = "==2.19.*"
 pymupdf = ">=1.28.0,<2"
 requests = ">=2.32,<3"
 openpyxl = ">=3.1,<4"
@@ -19,12 +35,16 @@ matplotlib = ">=3.8,<4"
 fonttools = ">=4.50,<5"
 uharfbuzz = ">=0.56,<1"
 numpy = ">=1.26,<3"
-
-[pypi-dependencies]
-# 直書方向屬性，以及認得字素叢集的 \X。
 # The Vertical_Orientation property, and the \X that matches a grapheme.
-unicodedataplus = ">=15.1"
+unicodedataplus = ">=16.0"
 regex = ">=2024.0"
+
+# unicodedataplus has no osx-64 wheel at all (its last x86_64 macOS build
+# predates Python 3.12), so pip falls back to its plain-C sdist there. A
+# compiler is all that build needs; c-compiler picks the right conda-forge
+# one for the platform.
+[target.osx-64.dependencies]
+c-compiler = "*"
 
 [tasks]
 setup = { cmd = "python scripts/tex_toolchain.py setup", description = "Install rootless TinyTeX and all thesis TeX packages" }
