@@ -109,11 +109,23 @@ def tinytex_bin() -> Path:
     return Path(pytinytex.get_tinytex_path()).resolve()
 
 
+def find_tlmgr(bin_dir: Path) -> Path | None:
+    """Locate tlmgr in bin_dir regardless of platform extension.
+
+    TinyTeX ships it as a bare `tlmgr` on Linux and macOS but as `tlmgr.bat`
+    on Windows, so an extension-less path check never matches there.
+    """
+    for candidate in bin_dir.iterdir():
+        if candidate.is_file() and candidate.stem == "tlmgr":
+            return candidate
+    return None
+
+
 def ensure_tinytex() -> Path:
     """Download the extended TinyTeX distribution when it is not installed."""
     try:
         bin_dir = tinytex_bin()
-        if (bin_dir / "tlmgr").exists():
+        if find_tlmgr(bin_dir) is not None:
             return bin_dir
     except (FileNotFoundError, RuntimeError):
         pass
