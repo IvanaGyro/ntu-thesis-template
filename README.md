@@ -37,6 +37,11 @@ override that with `NTU_THESIS_TINYTEX_ROOT`. Keep it outside the repository —
 `minted` v3's `latexrestricted` refuses to run an executable located below the
 document's working directory.
 
+On Intel Macs (`osx-64`), `pixi run setup` compiles one dependency
+(`unicodedataplus`) from source, which needs Apple's SDK headers; install
+Xcode's Command Line Tools first (`xcode-select --install`) if you don't
+already have them.
+
 If XeLaTeX, latexmk, and Biber are already on your `PATH`, skip Pixi entirely:
 
 ```bash

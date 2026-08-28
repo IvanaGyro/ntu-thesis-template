@@ -3,15 +3,23 @@ name = "ntu-thesis-template"
 version = "0.1.0"
 description = "Reproducible, rootless build environment for the NTU thesis template"
 channels = ["conda-forge"]
-platforms = ["linux-64"]
+# win-arm64: conda-forge has no perl or fontconfig for it.
+# linux-aarch64: TinyTeX's plain release ships as .tar.xz there, unlike
+# .tar.gz/.tgz/.zip everywhere else; pytinytex 0.5.1 can neither find nor
+# extract .tar.xz. Confirmed on an actual arm64 Linux CI runner.
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 
 [dependencies]
+# Only non-pip system tools: the interpreter, and the latexmk (Perl) and
+# fc-cache (fontconfig) binaries. Everything else is a pypi-dependency.
 python = "3.12.*"
-pytinytex = "0.5.*"
-pygments = "2.19.*"
 perl = "5.*"
 fontconfig = ">=2.14,<3"
 ca-certificates = "*"
+
+[pypi-dependencies]
+pytinytex = "==0.5.*"
+pygments = "==2.19.*"
 pymupdf = ">=1.28.0,<2"
 requests = ">=2.32,<3"
 openpyxl = ">=3.1,<4"
@@ -19,12 +27,16 @@ matplotlib = ">=3.8,<4"
 fonttools = ">=4.50,<5"
 uharfbuzz = ">=0.56,<1"
 numpy = ">=1.26,<3"
-
-[pypi-dependencies]
-# 直書方向屬性，以及認得字素叢集的 \X。
 # The Vertical_Orientation property, and the \X that matches a grapheme.
-unicodedataplus = ">=15.1"
+unicodedataplus = ">=16.0"
 regex = ">=2024.0"
+
+# unicodedataplus has no osx-64 wheel from 16.0 on (arm64-only there), so
+# pip builds its sdist here instead. c-compiler supplies the compiler and
+# linker but not Apple's SDK headers -- assumes Xcode Command Line Tools
+# are already installed.
+[target.osx-64.dependencies]
+c-compiler = "*"
 
 [tasks]
 setup = { cmd = "python scripts/tex_toolchain.py setup", description = "Install rootless TinyTeX and all thesis TeX packages" }
