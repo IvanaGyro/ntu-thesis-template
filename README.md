@@ -67,10 +67,13 @@ The split is deliberate: **`main.tex` holds every style and layout setting,
 
 Two things to know about the names in `ntusetup.tex`:
 
-- `college` and `institute` must be names NTU publishes. A name that is not on
-  the list is a warning while you are writing and an error when you generate
-  the TDR upload script. If NTU has reorganised a college since this template
-  was last updated, `pixi run units` refreshes the list it is checked against.
+- `college` and `institute`, and the English `college*` and `institute*`, must
+  all be names NTU publishes, with `college` and `college*` the published pair
+  for one college and each institute listed under the college of its own
+  language. A name that is not on the list is a warning while you are writing
+  and an error when you generate the TDR upload script. If NTU has reorganised
+  a college since this template was last updated, `pixi run units` refreshes
+  the list it is checked against.
 - English unit names containing `&` — 98 of them do — must be written `\&`,
   exactly as they would be to typeset on the cover.
 
@@ -131,10 +134,15 @@ From 國立臺灣大學碩、博士學位論文格式規範 (112學年度第1學
 > 左右各3公分，字體顏色為黑色
 
 The template sets the layout for you: A4 paper, a 12 pt body in 楷書 and Times
-New Roman, the line spacing and the 上3 下2 左右3 公分 margins the rules ask for,
-black body text, the cover at 18/16/14 pt centred, and the order of the front
-matter. Citation labels, URLs, and the DOI stamp are colored by default;
-`grayprint = true` (below) paints those black as well.
+New Roman, the 上3 下2 左右3 公分 margins, black body text, the cover at
+18/16/14 pt centred, and the order of the front matter. Citation labels, URLs,
+and the DOI stamp are colored by default; `grayprint = true` (below) paints
+those black as well.
+
+The body is double-spaced, which is what the rules ask of a thesis written in
+English. A thesis written in Chinese is asked for 1.5 spacing instead, and that
+is not switched for you: change the `\setstretch{1.6}` in `ntuthesis.cls` to
+`\setstretch{1.2}`.
 
 The lengths are yours to keep to — 摘要 at three pages and 謝辭 at one — and each
 file says so at the top; nothing stops an overlong one from typesetting.
