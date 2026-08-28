@@ -145,8 +145,12 @@ those black as well.
 
 The body is double-spaced, which is what the rules ask of a thesis written in
 English. A thesis written in Chinese is asked for 1.5 spacing instead, and that
-is not switched for you: change the `\setstretch{1.6}` in `ntuthesis.cls` to
-`\setstretch{1.2}`.
+is not switched for you. Set it in `main.tex`, below `\documentclass`, where
+the rest of the layout lives:
+
+```latex
+\setstretch{1.2}                     % 1.2：1.5 倍行距, 1.6：2.0 倍行距
+```
 
 The lengths are yours to keep to — 摘要 at three pages and 謝辭 at one — and each
 file says so at the top; nothing stops an overlong one from typesetting.
