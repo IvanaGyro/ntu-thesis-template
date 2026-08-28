@@ -1426,9 +1426,17 @@
 \ifthenelse{\equal{\ntu@doi}{true}}{\insertdoi{\ntu@DOI}}{}
 
 % 設定行距
-% 1.2：1.5 倍行距
-% 1.6：2.0 倍行距
-\setstretch{1.6}
+% 格式規範要求中文撰寫用 1.5 倍行距（1.2），英文撰寫用 2.0 倍行距（1.6），
+% 故此處依 language 選項決定。要改用其他行距，在 main.tex 的 \documentclass
+% 之後呼叫 \setstretch 即可覆寫。
+% The format rules ask for 1.5 line spacing in a Chinese thesis and double
+% spacing in an English one, so the language option picks it. A \setstretch in
+% main.tex after \documentclass still overrides this.
+\ifthenelse{\equal{\ntu@language}{chinese}}{
+  \setstretch{1.2}
+}{
+  \setstretch{1.6}
+}
 
 % 中文化
 % \newcommand{\loflabel}{圖}
