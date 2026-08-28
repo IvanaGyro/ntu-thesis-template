@@ -89,11 +89,6 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 
 - `front/abstract.tex` calls `\zhlipsum[1][name=trad]`; the package default is
   simplified Chinese, which a traditional-only CJK face cannot set.
-- The body spacing is chosen by the `language` option — `\setstretch{1.2}` for
-  chinese, `{1.6}` for english — because the format rules ask 1.5 of a Chinese
-  thesis and double of an English one. It has to stay in section 10, after
-  `setspace` is loaded and after `\ntu@language` is resolved, and it has to stay
-  in the class body so that a `\setstretch` in `main.tex`'s preamble still wins.
 - `fontset=default` must keep checking `\IfFontExistsTF{Times New Roman}` before
   loading it. fontconfig answers that request with a metric-compatible
   substitute (`fc-match "Times New Roman"` often returns Tinos), so without the
