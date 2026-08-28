@@ -68,12 +68,16 @@ The split is deliberate: **`main.tex` holds every style and layout setting,
 Two things to know about the names in `ntusetup.tex`:
 
 - `college` and `institute`, and the English `college*` and `institute*`, must
-  all be names NTU publishes, with `college` and `college*` the published pair
-  for one college and each institute listed under the college of its own
-  language. A name that is not on the list is a warning while you are writing
-  and an error when you generate the TDR upload script. If NTU has reorganised
-  a college since this template was last updated, `pixi run units` refreshes
-  the list it is checked against.
+  all be names NTU publishes: the unstarred ones from
+  [學術單位](https://www.ntu.edu.tw/academics/academics_list.html), the starred
+  ones from
+  [Academics](https://www.ntu.edu.tw/english/academics/academics_list.html).
+  `college` and `college*` must be the published pair for one college, and each
+  institute must be listed under the college of its own language. A name that
+  is not on the list is a warning while you are writing and an error when you
+  generate the TDR upload script; if NTU has reorganised a college since this
+  template was last updated, `pixi run units` refreshes the list it is checked
+  against.
 - English unit names containing `&` — 98 of them do — must be written `\&`,
   exactly as they would be to typeset on the cover.
 
