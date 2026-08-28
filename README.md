@@ -33,14 +33,12 @@ pixi run clean     # remove build artifacts, keep the toolchain
 
 `build` depends on `setup`, so a single `pixi run build` is enough the first
 time. TinyTeX is installed under `~/.cache/ntu-thesis-template/pytinytex`;
-override that with `NTU_THESIS_TINYTEX_ROOT`. Keep it outside the repository —
-`minted` v3's `latexrestricted` refuses to run an executable located below the
-document's working directory.
+`NTU_THESIS_TINYTEX_ROOT` overrides that, but keep it outside the repository or
+`minted` will refuse to run.
 
-On Intel Macs (`osx-64`), `pixi run setup` compiles one dependency
-(`unicodedataplus`) from source, which needs Apple's SDK headers; install
-Xcode's Command Line Tools first (`xcode-select --install`) if you don't
-already have them.
+On Intel Macs (`osx-64`), `pixi run setup` compiles one dependency from source,
+which needs Apple's SDK headers; install Xcode's Command Line Tools first
+(`xcode-select --install`) if you don't already have them.
 
 If XeLaTeX, latexmk, and Biber are already on your `PATH`, skip Pixi entirely:
 
@@ -66,6 +64,15 @@ The split is deliberate: **`main.tex` holds every style and layout setting,
 | 7 | `back/references.bib` | Your references. Ships one worked example per biblatex entry type. |
 | 8 | `main.tex` | **Delete the `\nocite{*}` line** — it exists only so the example bibliography prints in full. |
 | 9 | `back/appendix0*.tex` | Appendices, or comment out their `\input` lines in `main.tex`. |
+
+Two things to know about the names in `ntusetup.tex`:
+
+- `college` and `institute` must be names NTU publishes. A name that is not on
+  the list is a warning while you are writing and an error when you generate
+  the TDR upload script. If NTU has reorganised a college since this template
+  was last updated, `pixi run units` refreshes the list it is checked against.
+- English unit names containing `&` — 98 of them do — must be written `\&`,
+  exactly as they would be to typeset on the cover.
 
 ## Verification letter (口試委員審定書)
 
@@ -93,29 +100,9 @@ with the scan. The page number, watermark, and DOI stamp are all drawn on top
 of whatever PDF sits there, and the image is scaled to the paper without
 distortion. A PDF, PNG, or JPG all work.
 
-Deleting the file entirely makes `\makeverification` fall back to a typeset
-letter that fills in your title, author, ID, and advisor from `ntusetup.tex`,
-with blank signature rules. latexmk notices the file appearing, but not
-disappearing, so switching back needs `pixi run clean && pixi run build`.
-
-<details>
-<summary>Where the shipped forms came from</summary>
-
-Both are published by 教務處 at
-<https://www.aca.ntu.edu.tw/w/aca/GAADForms>. NTU distributes the doctoral form
-as a PDF, which is included unchanged. The master's form is only published as
-`碩士審定書.odt` and was converted with LibreOffice:
-
-```bash
-soffice --headless --convert-to pdf --outdir front/ 碩士審定書.odt
-```
-
-The form asks for 標楷體. If that font is not installed, LibreOffice silently
-substitutes a sans-serif face; alias 標楷體 to a 楷書 font such as
-`AR PL KaitiM Big5` in `fontconfig` before converting. Re-run this if NTU
-revises the form.
-
-</details>
+Deleting the file entirely falls back to the typeset letter. latexmk notices
+the file appearing, but not disappearing, so switching back needs
+`pixi run clean && pixi run build`.
 
 ## Fonts
 
@@ -134,9 +121,6 @@ fonts at all and always compiles, including on Overleaf.
 available. Full details, licences, and where to obtain Times New Roman, 標楷體
 and 新細明體 are in [`fonts/README.md`](fonts/README.md).
 
-Note that `zhlipsum`, used for the Chinese placeholder text, defaults to
-simplified Chinese. The template calls it as `\zhlipsum[1][name=trad]`.
-
 ## NTU format compliance
 
 From 國立臺灣大學碩、博士學位論文格式規範 (112學年度第1學期第1次教務會議通過,
@@ -146,14 +130,10 @@ From 國立臺灣大學碩、博士學位論文格式規範 (112學年度第1學
 > Roman 打字，中文撰寫以1.5間距，英文則以雙行間距，本文留白上3公分、下2公分、
 > 左右各3公分，字體顏色為黑色
 
-| Requirement | Handled by |
-| --- | --- |
-| A4, 12 pt body | `\LoadClass[a4paper, 12pt]{report}` |
-| Margins 上3 下2 左右3 公分 | `geometry` in `ntuthesis.cls` |
-| Line spacing | `\setstretch{1.6}` |
-| 楷書 + Times New Roman | `fontset` / `cjkfont` (see above) |
-| Cover at 18/16/14 pt, centred | `\makecover` |
-| Page order, 摘要 ≤ 3 pages, 謝辭 ≤ 1 page | `main.tex` inclusion order; noted in each file |
+The template sets all of it for you: A4 paper, a 12 pt body in 楷書 and Times
+New Roman, the line spacing and the 上3 下2 左右3 公分 margins the rules ask
+for, black text, the cover at 18/16/14 pt centred, and the page order with 摘要
+at three pages and 謝辭 at one.
 
 Departments may add their own rules on top of these — check with your 系所.
 
@@ -176,9 +156,8 @@ labels into a mid gray that is harder to read than the text around them. The
 | URLs and the DOI stamp | magenta | the text color |
 | Figures | unchanged | unchanged |
 
-The text color is `\colorlet{ntu@color@text}{black}` in `ntuthesis.cls`, the one
-line to change if the body text ever stops being black. Links stay clickable
-either way, and figures keep their colors — print those pages in color.
+Links stay clickable either way, and figures keep their colors — print those
+pages in color.
 
 ## Cover page as a separate PDF
 
@@ -190,19 +169,9 @@ pixi run cover                          # main.pdf -> main-cover.pdf
 pixi run cover -- --output front.pdf    # other input, output, or options
 ```
 
-Copying page one alone leaves the objects that describe a whole thesis
-behind: the outline tree, the named destinations, the page labels, the
-opening action, and the annotations and links of the copied page. The two
-embedded fonts are then rewritten with only the glyphs the cover prints, and
-everything left unreferenced is garbage collected, which cuts the cover down
-to a small fraction of the whole thesis's file size (the example thesis in
-this template goes from 490 kB to about 96 kB).
-
-The script refuses to report success until the cover matches page one of
-`main.pdf` in every respect it can measure: page and crop box, rotation, the
-rendered pixels at 300 dpi (`--dpi` raises that), the extracted text, every
-glyph with its font, size, color, and position, the vector drawings, and the
-pixels of every embedded image. Like `protect`, it never runs as part of
+What you get is page one and nothing else, a small fraction of the whole
+thesis's file size, and checked against page one of `main.pdf` before the run
+reports success. Like `protect` and `spine`, it is never part of
 `pixi run build`.
 
 ## Spine artwork (書側)
@@ -217,46 +186,20 @@ pixi run spine -- --width 8   # one artwork at a thickness you measured, in mm
 pixi run spine -- -o artwork  # write them somewhere else
 ```
 
-Run it after `pixi run build`: the width comes from `main.pdf`'s page count and
-the words from the source beside it.
+Run it after `pixi run build`. The width is estimated from `main.pdf`'s page
+count, assuming 80 磅道林紙 plus the 平裝 cover or the 精裝 board; both bindings
+are written every time. Once you have a bound copy in hand, measure it and pass
+`--width` for a single artwork at exactly that thickness.
 
-### How wide
-
-The width follows `main.pdf`'s own page count: one sheet per page below 80
-pages and one per two from there up (單面 or 雙面 printing), each sheet 0.10 mm
-of 80 磅道林紙, plus 1 mm for the 平裝 cover and its glue, plus 4 mm of board
-for 精裝, rounded up to the next whole millimetre.
-
-Both bindings are written every time. Once you have a bound copy in hand,
-measure it and pass `--width`: that writes one artwork, `main-spine.odt` and
-`main-spine.pdf`, at exactly the thickness you give.
-
-### What it says
-
-Every word comes from `main.tex` and `ntusetup.tex` — the degree from the
-class options, the rest from `\ntusetup`, dated today if you leave `date`
-commented out. The layout is the one in NTU's own samples,
-[THESISSAMPLE.doc][zh] and [thesissample_en.doc][en]: 12 pt for the degree,
-14 pt for the title, the author and the date, and the heading at whatever
-size its two columns take. A block that would otherwise run off the artwork
-is set smaller, and the run reports every size it had to shrink.
+Every word comes from `main.tex` and `ntusetup.tex` — the degree from the class
+options, the rest from `\ntusetup`, dated today if you leave `date` commented
+out. The layout is the one in NTU's own samples, [THESISSAMPLE.doc][zh] and
+[thesissample_en.doc][en], lined up with the cover. A block that would
+otherwise run off the artwork is set smaller, and the run reports every size it
+had to shrink.
 
 [zh]: https://www.lib.ntu.edu.tw/doc/cl/THESISSAMPLE.doc
 [en]: https://www.lib.ntu.edu.tw/doc/CL/thesissample_en.doc
-
-The rows are stretched so the spine's first character starts level with the
-cover's first line and its last finishes level with the cover's last.
-
-### Fonts
-
-Both files are set in the very face `main.tex` sets Chinese in: the PDF always
-carries it, and the ODT carries it too unless the face's licence forbids
-embedding in a document that can be edited, in which case the ODT names it and
-the machine that opens it supplies it. What travels is a subset — the
-characters the spine letters — so a print shop can move and resize what is
-there, but typing a new character needs the face installed on their machine.
-
-Like `cover` and `protect`, none of this runs as part of `pixi run build`.
 
 ## Submission
 
@@ -270,21 +213,17 @@ pixi run protect                       # prompts for the owner password twice
 pixi run protect -- --output final.pdf # other input, output, or options
 ```
 
-It is never run as part of `build`. Submit `main-protected.pdf` and keep the
-owner password. The password can also come from `--password` or the
-`NTU_THESIS_PDF_OWNER_PASSWORD` environment variable, which is what a
-non-interactive shell needs. `--encryption` selects `aes-256` (default),
-`aes-128`, or `rc4-128` for readers older than Acrobat 9.
-
-Enabling the accessibility permission only lifts the legal restriction on text
-extraction; it does not make the file a tagged PDF. The script warns when the
-structure tree is missing, which is the current state of this XeLaTeX build.
+Submit `main-protected.pdf` and keep the owner password. The password can also
+come from `--password` or the `NTU_THESIS_PDF_OWNER_PASSWORD` environment
+variable, which is what a non-interactive shell needs. `--encryption` selects
+`aes-256` (default), `aes-128`, or `rc4-128` for readers older than Acrobat 9.
 
 `generate_tdr_upload_script.py` builds a copy-ready JavaScript snippet that
 fills in NTU's TDR upload form, reading the metadata from `ntusetup.tex`,
 `main.tex`, `front/abstract.tex`, `main.toc`, and `main.pdf`. Run it after the
 final build. It prompts for anything it cannot infer, including any field still
-holding a template placeholder.
+holding a template placeholder, and refuses to run while the committee still
+holds the template's example members.
 
 The generated script fills **both** TDR pages — paste it once on 輸入論文資料 and
 again on 設定口試委員名單, and it detects which one is open.
@@ -296,39 +235,6 @@ ORCID. Nothing typesets them; the signatures on the letter are handwritten.
 **The 指導教授 must be first.** TDR offers that 身分 only in its first committee
 block, so the entries and the blocks line up only in that order; every entry
 after it must be `共同指導教授` or `口試委員`.
-
-## Checks on your data
-
-Two things are checked against sources rather than taken on trust:
-
-| Checked | While building the PDF | While generating the TDR script |
-| --- | --- | --- |
-| `college`/`college*` and `institute`/`institute*` are names NTU publishes | warning | error |
-| The 身分 order in `\ntucommittee` | warning | error |
-
-The build only warns, because a half-filled `ntusetup.tex` should still produce
-a PDF while you are writing. By the time you are generating an upload script the
-names are going onto a submission, so the same problems become fatal.
-
-The generator also refuses to run while the committee still holds the
-template's example members, since it now types the list straight into TDR.
-
-The official names live in `ntu-academic-units.tex`, which is committed — the
-build never goes online. It was generated from
-[NTU's list of academic units](https://www.ntu.edu.tw/academics/academics_list.html)
-and its [English counterpart](https://www.ntu.edu.tw/english/academics/academics_list.html);
-`pixi run units` refreshes it on the rare occasion NTU reorganises a college.
-The two pages do not list identical departments, so each language is checked
-against its own list rather than paired across languages.
-
-Names containing `&` — 98 of the English ones do — must be written `\&` in
-`ntusetup.tex`, exactly as they would be to typeset on the cover.
-
-## Example figures
-
-The four plots in `figures/` are generated by
-`scripts/make_example_figures.py`. The PDFs are committed, so Overleaf never
-needs Python; regenerate them with `pixi run figures`.
 
 ## Credits and license
 
