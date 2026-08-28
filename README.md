@@ -131,11 +131,13 @@ From 國立臺灣大學碩、博士學位論文格式規範 (112學年度第1學
 > 左右各3公分，字體顏色為黑色
 
 The template sets the layout for you: A4 paper, a 12 pt body in 楷書 and Times
-New Roman, the line spacing and the 上3 下2 左右3 公分 margins the rules ask
-for, black text, the cover at 18/16/14 pt centred, and the order of the front
-matter. The lengths are yours to keep to — 摘要 at three pages and 謝辭 at one —
-and each file says so at the top; nothing stops an overlong one from
-typesetting.
+New Roman, the line spacing and the 上3 下2 左右3 公分 margins the rules ask for,
+black body text, the cover at 18/16/14 pt centred, and the order of the front
+matter. Citation labels, URLs, and the DOI stamp are colored by default;
+`grayprint = true` (below) paints those black as well.
+
+The lengths are yours to keep to — 摘要 at three pages and 謝辭 at one — and each
+file says so at the top; nothing stops an overlong one from typesetting.
 
 Departments may add their own rules on top of these — check with your 系所.
 
