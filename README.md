@@ -56,7 +56,7 @@ The split is deliberate: **`main.tex` holds every style and layout setting,
 | Step | File | What goes in it |
 | --- | --- | --- |
 | 1 | `ntusetup.tex` | Title, author, student ID, advisor, department, keywords, DOI, email, ORCID, and the oral examination committee. The only place personal data belongs. |
-| 2 | `main.tex` | Class options, the verification-letter path, package loading, and the bibliography style. |
+| 2 | `main.tex` | Class options, among them `language`, which sets both the language of the headings and the line spacing. Also the verification-letter path, package loading, and the bibliography style. |
 | 3 | `front/abstract.tex` | Chinese and English abstracts, three pages each at most. |
 | 4 | `front/acknowledgement.tex` | 謝辭, optional, one page at most. |
 | 5 | `front/denotation.tex` | Symbol list. Ships one example per broad field — keep what fits, delete the rest. |
