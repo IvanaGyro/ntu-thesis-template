@@ -39,12 +39,19 @@ numpy = ">=1.26,<3"
 unicodedataplus = ">=16.0"
 regex = ">=2024.0"
 
-# unicodedataplus has no osx-64 wheel at all (its last x86_64 macOS build
-# predates Python 3.12), so pip falls back to its plain-C sdist there. A
-# compiler is all that build needs; c-compiler picks the right conda-forge
-# one for the platform.
+# unicodedataplus has no osx-64 wheel at Python 3.12 (its last x86_64 macOS
+# build was for 3.11) and none at all from 16.0 on (macOS wheels there are
+# arm64-only). A conda-forge compiler could build its sdist instead, but
+# that only provides linker/compiler tooling, not Apple's SDK headers --
+# conda-forge doesn't redistribute those, so it still needs Xcode's Command
+# Line Tools on the machine, which isn't guaranteed and isn't sudo-free.
+# Pinning osx-64 to the last Python/unicodedataplus pair with a real wheel
+# keeps this platform wheel-only like the rest.
 [target.osx-64.dependencies]
-c-compiler = "*"
+python = "3.11.*"
+
+[target.osx-64.pypi-dependencies]
+unicodedataplus = ">=15.1,<16"
 
 [tasks]
 setup = { cmd = "python scripts/tex_toolchain.py setup", description = "Install rootless TinyTeX and all thesis TeX packages" }
