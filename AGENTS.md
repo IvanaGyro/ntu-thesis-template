@@ -41,7 +41,7 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - `ntusetup.tex` — personal data only: the `\ntusetup` metadata block and the
   `\ntucommittee` entries. Keep style out of it; that split is the point.
 - `ntuthesis.cls` — the class. Cover, verification letter, watermark, DOI
-  stamp, front-matter environments, four `fontset` branches.
+  stamp, front-matter environments, the `engfont`/`cjkfont` lookup.
 - `environments.tex` — the `wherelist` environment.
 - `front/` — abstract, acknowledgement, denotation, and the two official
   verification-letter PDFs (blank master's and doctoral forms from 教務處).
@@ -81,21 +81,35 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   with the work, so `LICENSE` must keep both copyright lines.
 - Comments in `.tex` files are bilingual where they explain a NTU-specific rule,
   Chinese first. Comments in `.py` files are English.
-- Any change to a class option, a `fontset`, or the inclusion order has to be
-  reflected in `README.md`'s edit-order table.
+- Any change to a class option, to how `engfont`/`cjkfont` resolve, or to the
+  inclusion order has to be reflected in `README.md`'s edit-order table.
 
 ## Constraints worth remembering
 
 - `front/abstract.tex` calls `\zhlipsum[1][name=trad]`; the package default is
   simplified Chinese, which a traditional-only CJK face cannot set.
-- `fontset=default` must keep checking `\IfFontExistsTF{Times New Roman}` before
-  loading it. fontconfig answers that request with a metric-compatible
+- `engfont` and `cjkfont` each take a font file in `fonts/` or an installed
+  family name, and `\ntu@font@resolve` tries them in that order: the exact file
+  named, then that name with `.ttf`/`.otf`/`.ttc` (with or without `-Regular`,
+  attaching any `-Bold`/`-Italic`/`-BoldItalic` beside it), then the system.
+- The family branch must keep checking `\IfFontExistsTF` before loading.
+  fontconfig answers a request for a missing family with a metric-compatible
   substitute (`fc-match "Times New Roman"` often returns Tinos), so without the
   check a missing font produces a plausible PDF in the wrong typeface instead of
   an error. `\IfFontExistsTF` is not fooled by the substitution.
-- Shipped fonts load by *filename* with an explicit `Path`, so they resolve
-  identically on Overleaf and locally without fontconfig. Only `system` and
-  `overleaf` resolve by family name.
+- A font in `fonts/` cannot be reached by family name, only by path. XeTeX
+  resolves families through the platform font manager, which does not see a
+  project directory, and `OSFONTDIR` extends only kpathsea's *filename* search —
+  `kpsewhich Tinos-Regular.ttf` finds the file while `\setmainfont{Tinos}` does
+  not. Listing the directory in a `fonts.conf` and running `fc-cache` does work,
+  but only on Linux and never on Overleaf.
+- `engfont`/`cjkfont` are `\ntusetup` keys, not class options: `\documentclass`
+  runs its option list through `\zap@space`, which turns
+  `engfont = {Times New Roman}` into `TimesNewRoman`. Their lookup therefore
+  waits for `\AtEndPreamble`, once main.tex's `\ntusetup` has run.
+- `fontset` survives as a key that only raises, so an old main.tex is told what
+  to write instead of being handed to `report` by `\DeclareDefaultOption` and
+  built silently on the new defaults.
 - `fonts/` is ~72 MB, almost all of it the two 全字庫 TTFs. Adding the `Ext-B`
   or `Plus` variants would roughly double that for characters a thesis will not
   use.
@@ -147,7 +161,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   the same peak ink.
 - `scripts/thesis_metadata.py` is the one reader of `main.tex` and
   `ntusetup.tex`; the spine and the TDR filler both go through it, so a change
-  to how a value is written is a change in one place.
+  to how a value is written is a change in one place. `parse_ntusetup` merges
+  every `\ntusetup` block in a file, because main.tex now has two.
+- `scripts/make_spine.py` resolves `cjkfont` exactly as `ntuthesis.cls` does and
+  has to keep doing so: same probe order, same default (`TW-Kai-98_1.ttf`).
 - The spine stretches its rows between two hard-coded points, `COVER_TOP_PT`
   and `COVER_BOTTOM_PT`, where `\makecover`'s fixed 3 cm margins and its
   `\vfill`s put the cover's first and last lines. Changing

@@ -13,15 +13,6 @@
   openright,
   degree       = master,            % degree = master | doctor
   language     = english,           % language = chinese | english
-  fontset      = default,           % fontset = default | tinos | template | system | overleaf
-                                    %   default  系統的 Times New Roman ＋ 隨附全字庫字型
-                                    %   tinos    隨附的 Tinos ＋ 全字庫，完全不需安裝字型
-                                    %   template 使用者自行放進 fonts/ 的字型（見 fonts/README.md）
-                                    %   system   中英文都由作業系統解析字族名稱
-                                    %   overleaf Overleaf 影像內建字型
-  cjkfont      = kai,               % cjkfont = kai | sung
-                                    %   kai  全字庫正楷體 TW-Kai（規範以楷書為主）
-                                    %   sung 全字庫正宋體 TW-Sung
   mathfont     = stix,              % mathfont = default | termes | stix
   watermark    = true,              % watermark = true | false   內頁浮水印
   coverseal    = true,              % coverseal = true | false   封面校徽
@@ -32,6 +23,31 @@
                                     %   file     一律使用檔案，找不到就報錯
                                     %   typeset  一律自動排版，忽略檔案
 ]{ntuthesis}
+
+% --------------------------------------------------
+% 中英文字型
+% The Latin and CJK fonts
+%
+% 兩者都可以填字型檔名或字族名稱，依序尋找，先找到的先用：
+%   1. fonts/english/（中文為 fonts/chinese/）裡的檔名，例如 TW-Kai-98_1.ttf
+%   2. 同目錄的字型基本名稱，例如 Tinos，會自動接上 Tinos-Bold 等粗體與斜體
+%   3. 作業系統（含 Overleaf）已安裝的字族名稱，例如 Times New Roman
+% 三種都找不到就報錯，不會默默換成看起來像、但不是規範指定的字型。
+% 詳見 fonts/README.md。
+%
+% Either one takes a font file in fonts/ or an installed family name, tried in
+% that order: an exact filename, a base name whose -Bold and -Italic siblings
+% are picked up automatically, then a family installed on the system, Overleaf's
+% image included. Nothing matching is an error, never a silent substitution.
+% See fonts/README.md.
+% --------------------------------------------------
+\ntusetup{
+  % 規範指定的英文字型，Windows 與 macOS 內建。沒有的話改成 {Tinos}：
+  % 隨模板散布、字寬與 Times New Roman 相同，不需安裝任何字型。
+  engfont = {Times New Roman},
+  % 隨附的全字庫正楷體（規範以楷書為主）。{TW-Sung-98_1.ttf} 為全字庫正宋體。
+  cjkfont = {TW-Kai-98_1.ttf},
+}
 
 % --------------------------------------------------
 % 審定書檔案路徑（verification = auto 或 file 時使用）

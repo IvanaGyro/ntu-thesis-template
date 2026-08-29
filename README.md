@@ -56,7 +56,7 @@ The split is deliberate: **`main.tex` holds every style and layout setting,
 | Step | File | What goes in it |
 | --- | --- | --- |
 | 1 | `ntusetup.tex` | Title, author, student ID, advisor, department, keywords, DOI, email, ORCID, and the oral examination committee. The only place personal data belongs. |
-| 2 | `main.tex` | Class options, the verification-letter path, package loading, and the bibliography style. |
+| 2 | `main.tex` | Class options, the two fonts, the verification-letter path, package loading, and the bibliography style. |
 | 3 | `front/abstract.tex` | Chinese and English abstracts, three pages each at most. |
 | 4 | `front/acknowledgement.tex` | 謝辭, optional, one page at most. |
 | 5 | `front/denotation.tex` | Symbol list. Ships one example per broad field — keep what fits, delete the rest. |
@@ -113,20 +113,42 @@ the file appearing, but not disappearing, so switching back needs
 
 ## Fonts
 
-`fontset = default` uses **your system's Times New Roman** for English — the
-font the format rules name, present on Windows and macOS, and not shipped here
-because it is proprietary — together with **全字庫正楷體 TW-Kai**, which is
-bundled. `cjkfont = sung` switches the Chinese face to **全字庫正宋體 TW-Sung**.
+Both fonts are named in `main.tex`:
 
-If Times New Roman is not installed, the build **stops with an error** rather
-than quietly substituting a look-alike. Set `fontset = tinos` to use the
-bundled, metric-compatible Tinos instead; that combination needs no installed
-fonts at all and always compiles, including on Overleaf.
+```latex
+\ntusetup{
+  engfont = {Times New Roman},
+  cjkfont = {TW-Kai-98_1.ttf},
+}
+```
 
-`fontset = template` (your own files in `fonts/`), `fontset = system`
-(everything from installed system fonts), and `fontset = overleaf` are also
-available. Full details, licences, and where to obtain Times New Roman, 標楷體
-and 新細明體 are in [`fonts/README.md`](fonts/README.md).
+Either one takes a font file in `fonts/` or a font family installed on the
+machine, looked for in that order:
+
+| What you write | Where it is looked for |
+| --- | --- |
+| `TW-Kai-98_1.ttf` | that exact file, in `fonts/chinese/` for `cjkfont` and `fonts/english/` for `engfont` |
+| `Tinos` | `Tinos.ttf`, `.otf`, or `.ttc` in the same directory, with or without a `-Regular` suffix. Any `Tinos-Bold`, `Tinos-Italic`, and `Tinos-BoldItalic` beside it become the bold and italic faces. |
+| `Times New Roman` | a font family installed on the system, Overleaf's image included |
+
+The shipped default is the pair the format rules name: **your system's Times New
+Roman** — proprietary, present on Windows and macOS, and not shipped here — with
+the bundled **全字庫正楷體 TW-Kai**. `cjkfont = {TW-Sung-98_1.ttf}` switches the
+Chinese face to **全字庫正宋體 TW-Sung**.
+
+When none of the three finds anything, the build **stops with an error** rather
+than quietly substituting a look-alike: fontconfig answers a request for a
+missing Times New Roman with a metric-compatible stand-in, and the PDF that
+comes out looks right while being set in a font the rules do not name. Write
+`engfont = {Tinos}` to use the bundled, metric-compatible face on purpose; with
+the bundled Chinese face, that combination needs no installed fonts at all and
+always compiles, Overleaf included.
+
+A font in `fonts/` cannot be named by its family, only by its file: XeTeX
+resolves family names through the operating system's font manager, which knows
+nothing about a directory inside a project. Full details, licences, and where to
+obtain Times New Roman, 標楷體 and 新細明體 are in
+[`fonts/README.md`](fonts/README.md).
 
 ## NTU format compliance
 

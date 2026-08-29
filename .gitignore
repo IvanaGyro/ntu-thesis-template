@@ -27,7 +27,7 @@ __pycache__/
 /main-spine*.odt
 /main-spine*.pdf
 
-# Proprietary fonts a user drops in for fontset=template belong to them, not to
+# Proprietary fonts a user drops in for engfont/cjkfont belong to them, not to
 # this repository — see fonts/README.md. The freely licensed fonts the template
 # ships (Tinos, 全字庫 TW-Kai and TW-Sung) are re-included below.
 /fonts/english/*.ttf

@@ -120,13 +120,23 @@ def key_values(block: str) -> dict[str, str]:
 
 
 def parse_ntusetup(path: Path) -> dict[str, str]:
-    """Every key of the `\\ntusetup` block, as plain text."""
+    """Every key of every `\\ntusetup` block in the file, as plain text.
+
+    A file may hold more than one block -- main.tex keeps the fonts in one and
+    the verification letter in another -- and the class reads them all, so this
+    does too. A later block wins, exactly as it would when the class runs.
+    """
     text = strip_comments(path.read_text(encoding="utf-8"))
-    marker = re.search(r"\\ntusetup\s*\{", text)
-    if not marker:
+    blocks = re.compile(r"\\ntusetup\s*\{")
+    values: dict[str, str] = {}
+    cursor, seen = 0, False
+    while marker := blocks.search(text, cursor):
+        seen = True
+        block, cursor = braced_group(text, marker.end() - 1)
+        values.update(key_values(block))
+    if not seen:
         raise CollectionError(f"Could not find \\ntusetup in {path}")
-    block, _ = braced_group(text, marker.end() - 1)
-    return {key: latex_to_plain(value).strip() for key, value in key_values(block).items()}
+    return {key: latex_to_plain(value).strip() for key, value in values.items()}
 
 
 def class_options(path: Path) -> dict[str, str]:

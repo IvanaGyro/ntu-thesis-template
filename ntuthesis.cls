@@ -44,13 +44,6 @@
 \newcommand{\ntu@path@font}{./fonts/english/}
 \newcommand{\ntu@path@cjkfont}{./fonts/chinese/}
 
-% 隨模板散布的中文字型檔名。全字庫字型由數位發展部釋出，授權為
-% 「政府資料開放授權條款－第1版」或 OFL-1.1，可自由散布。
-% Shipped CJK font filenames. The 全字庫 fonts are released by 數位發展部 under
-% the Open Government Data License v1 or OFL-1.1, so they can be redistributed.
-\newcommand{\ntu@cjkfont@kai}{TW-Kai-98_1.ttf}
-\newcommand{\ntu@cjkfont@sung}{TW-Sung-98_1.ttf}
-
 % 變數: 中文翻譯
 % Variables: Translation (Chinese)
 \newcommand{\ntu@verificationletter@zh}{口試委員審定書}
@@ -264,22 +257,13 @@
     },
     default = chinese,
   },
+  % fontset 已由 engfont 與 cjkfont 取代。留著這個鍵是為了讓舊的 main.tex 得到
+  % 一則說明，而不是被 \DeclareDefaultOption 默默丟給 report 之後改用預設字型。
+  % fontset has been replaced by engfont and cjkfont. The key stays so that an
+  % old main.tex gets an explanation instead of having \DeclareDefaultOption
+  % quietly hand it to report and build in whatever the new defaults are.
   fontset = {
-    choices = {
-      default,
-      tinos,
-      system,
-      overleaf,
-      template,
-    },
-    default = default,
-  },
-  cjkfont = {
-    choices = {
-      kai,
-      sung,
-    },
-    default = kai,
+    default = {},
   },
   mathfont = {
     choices = {
@@ -335,6 +319,26 @@
       false,
     },
     default = false,
+  },
+}
+
+% [字型設定]
+% Configs for the fonts, set with \ntusetup in main.tex
+%
+% 這兩個鍵不是類別選項，因為 \documentclass 的選項會被 \zap@space 去掉空白：
+% 寫成 engfont = {Times New Roman} 送到類別手上時會變成 TimesNewRoman，而規範
+% 指定的字型名稱正好帶空白。\ntusetup 走的是一般的 keyval，空白原封不動。
+%
+% Not class options: \documentclass runs its option list through \zap@space,
+% and `engfont = {Times New Roman}` reaches the class as `TimesNewRoman` --
+% precisely the font the format rules name. \ntusetup is ordinary keyval and
+% keeps the spaces.
+\ntu@define@key{
+  engfont = {
+    default = {Times New Roman},
+  },
+  cjkfont = {
+    default = {TW-Kai-98_1.ttf},
   },
 }
 
@@ -663,6 +667,7 @@
 % [載入套件]
 % - ifthen                      條件判斷支持
 % - xparse                      定義命令
+% - etoolbox                    \AtEndPreamble
 % - xeCJK                       排版中日韓(CJK)字符
 % - indentfirst                 首行縮進
 % - fontspec                    設定中英文字體
@@ -694,6 +699,7 @@
 % - natbib                      參考文獻
 %
 \RequirePackage{xparse}
+\RequirePackage{etoolbox}
 \RequirePackage{xeCJK}
 \RequirePackage{indentfirst}
 \RequirePackage{fix-cm}       % suppress Size substitutions with differences warning
@@ -742,129 +748,187 @@
 % - \setCJKmonofont{}			中文等寬字體
 %
 
-% 由 cjkfont 選項決定隨附的中文字型：kai 為全字庫正楷體，sung 為全字庫正宋體。
-% 臺大格式規範寫的是「中文以12號楷書（細明體及標楷體為主）」，因此預設楷體。
-% cjkfont picks the shipped CJK face: kai (楷體, the default) or sung (宋體).
-\ifthenelse{\equal{\ntu@cjkfont}{sung}}
-  {\newcommand{\ntu@cjkfontfile}{\ntu@cjkfont@sung}}
-  {\newcommand{\ntu@cjkfontfile}{\ntu@cjkfont@kai}}
-
-% fontset = default
-%
-% 英文用系統安裝的 Times New Roman，不隨模板散布字型檔：Times New Roman 是
-% Monotype 的商業字型，但 Windows 與 macOS 都內建，多數使用者本來就有。
-% 中文用隨附的全字庫字型，以檔名載入，不必另外安裝。
-%
-% 找不到 Times New Roman 時直接報錯，不會默默改用別的字型。fontconfig 會把
-% Times New Roman 對應到 Tinos、Liberation Serif 這類 metric-compatible 的替代
-% 字型（本機執行 fc-match "Times New Roman" 即可看到），排出來的 PDF 看起來正常，
-% 卻不是格式規範指定的字型。\IfFontExistsTF 不受這種替換影響，會如實回報字型
-% 不存在，因此在這裡先檢查再載入。沒有 Times New Roman 的人請改用
-% fontset = tinos。
-%
-% English uses the system's Times New Roman; the file is not shipped because it
-% is proprietary but present on Windows and macOS. CJK uses the bundled 全字庫
-% face, loaded by filename so nothing has to be installed.
-%
-% A missing Times New Roman is a hard error rather than a silent substitution.
-% fontconfig happily answers a request for Times New Roman with a
-% metric-compatible stand-in such as Tinos — run fc-match "Times New Roman" to
-% see it — which produces a plausible-looking PDF set in the wrong typeface.
-% \IfFontExistsTF is not fooled by that substitution, so the check below is
-% what makes the failure visible. Use fontset = tinos when the font is absent.
-\ifthenelse{\equal{\ntu@fontset}{default}}{
-  \IfFontExistsTF{Times New Roman}{
-    \setmainfont{Times New Roman}
-  }{
-    \ntu@error{%
-      fontset=default needs Times New Roman, which is not installed on this
-      system.\MessageBreak
-      Install it, or switch to fontset=tinos in main.tex to use the bundled
-      metric-compatible Tinos instead.\MessageBreak
-      See fonts/README.md%
-    }
-  }
-  \setCJKmainfont{\ntu@cjkfontfile}[Path = \ntu@path@cjkfont]
-  \setCJKmonofont{\ntu@cjkfontfile}[Path = \ntu@path@cjkfont]
+% fontset 在此版本被 engfont 與 cjkfont 取代。舊的 main.tex 若還寫著它，這裡直接
+% 報錯說明對照方式——否則 \DeclareDefaultOption 會把 fontset 丟給 report，report
+% 不認得就只留下一行 "Unused global option" 警告，論文照樣編得出來，卻是用新的
+% 預設字型排的，而字型換了看起來不一定明顯。
+% fontset was replaced by engfont and cjkfont in this version. An old main.tex
+% that still sets it gets an error explaining the move, rather than the silent
+% path: \DeclareDefaultOption hands fontset to report, report does not know it,
+% and the build goes through on the new defaults with nothing but an "Unused
+% global option" warning to show for it.
+\ifthenelse{\equal{\ntu@fontset}{}}{}{%
+  \ntu@error{%
+    fontset = \ntu@fontset\space is no longer a class option. Set the two\MessageBreak
+    fonts directly instead:\MessageBreak
+    default -> engfont = {Times New Roman}, cjkfont = {TW-Kai-98_1.ttf}\MessageBreak
+    tinos -> engfont = {Tinos}, cjkfont = {TW-Kai-98_1.ttf}\MessageBreak
+    template -> engfont = {Times New Roman}, cjkfont = {BiauKai}\MessageBreak
+    system -> engfont = {Times New Roman}, cjkfont = {BiauKai}\MessageBreak
+    overleaf -> engfont = {Times New Roman}, cjkfont = {AR PL KaitiM Big5}\MessageBreak
+    cjkfont = sung is now cjkfont = {TW-Sung-98_1.ttf}. See fonts/README.md%
+  }%
 }
 
-% fontset = tinos
+% [字型解析]
+% Font resolution
 %
-% 完全使用隨模板散布的字型，不需要系統安裝任何東西，Overleaf 上也一定能編譯。
-% Tinos 的字寬與 Times New Roman 相同（metric-compatible），版面配置一致，
-% 但字型名稱不是規範所寫的 Times New Roman，正式送印前請確認系所是否接受。
+% engfont（英文）與 cjkfont（中文）都接受三種寫法，依序尋找，先找到的先用：
 %
-% Fully self-contained: every font comes from fonts/, so nothing needs to be
-% installed and Overleaf always compiles. Tinos is metric-compatible with Times
-% New Roman, so line breaks and page counts match, but it is not literally the
-% typeface the format rules name — check with your department before submitting.
-\ifthenelse{\equal{\ntu@fontset}{tinos}}{
-  \setmainfont{Tinos-Regular.ttf}[
-    Path           = \ntu@path@font ,
-    BoldFont       = Tinos-Bold.ttf ,
-    ItalicFont     = Tinos-Italic.ttf ,
-    BoldItalicFont = Tinos-BoldItalic.ttf, ]
-  \setCJKmainfont{\ntu@cjkfontfile}[Path = \ntu@path@cjkfont]
-  \setCJKmonofont{\ntu@cjkfontfile}[Path = \ntu@path@cjkfont]
+%   1. fonts/english/（中文為 fonts/chinese/）裡的完整檔名，例如
+%      cjkfont = {TW-Kai-98_1.ttf}，就只載入那一個檔案。
+%   2. 同一個目錄裡的字型基本名稱，例如 engfont = {Tinos}，對應
+%      Tinos.ttf、.otf、.ttc 或 Tinos-Regular.ttf、.otf。同目錄若還有
+%      Tinos-Bold、Tinos-Italic、Tinos-BoldItalic，會自動接成粗體與斜體。
+%   3. 作業系統（含 Overleaf 影像）已安裝的字族名稱，例如
+%      engfont = {Times New Roman}、cjkfont = {BiauKai}。
+%
+% 三種都找不到就報錯，不會默默改用別的字型。
+%
+% engfont (Latin) and cjkfont (CJK) each take one of three forms, tried in
+% order, first match wins:
+%
+%   1. A complete filename in fonts/english/ (fonts/chinese/ for CJK), such as
+%      cjkfont = {TW-Kai-98_1.ttf}, which loads that one file.
+%   2. A font's base name in the same directory, such as engfont = {Tinos},
+%      matching Tinos.ttf, .otf, .ttc, or Tinos-Regular.ttf, .otf. Any
+%      Tinos-Bold, Tinos-Italic, and Tinos-BoldItalic beside it are picked up
+%      as the bold and italic faces.
+%   3. A font family installed on the system, Overleaf's image included, such
+%      as engfont = {Times New Roman} or cjkfont = {BiauKai}.
+%
+% Nothing matching is an error, never a silent substitution.
+%
+% 為什麼 fonts/ 裡的字型不能直接用字族名稱找到：XeTeX 解析字族名稱靠的是作業系統
+% 的字型管理員（Linux 是 fontconfig，macOS 是 CoreText，Windows 是 DirectWrite），
+% 專案目錄不在它們的搜尋範圍裡。OSFONTDIR 也幫不上忙，它只擴充 kpathsea 依「檔名」
+% 搜尋的路徑（TTFONTS／OPENTYPEFONTS），所以 kpsewhich Tinos-Regular.ttf 找得到檔案，
+% \setmainfont{Tinos} 仍然找不到字型。把 fonts/ 註冊進 fontconfig 再跑 fc-cache 確實
+% 可行，但那是 Linux 限定，Overleaf 上也做不到；以路徑載入則到哪裡都一樣，因此
+% fonts/ 一律走檔案，系統字型才走字族名稱。
+%
+% Why a font in fonts/ cannot be found by family name: XeTeX resolves family
+% names through the platform's font manager -- fontconfig on Linux, CoreText on
+% macOS, DirectWrite on Windows -- and a directory inside the project is on none
+% of their search paths. OSFONTDIR does not help either; it extends only
+% kpathsea's *filename* search (TTFONTS/OPENTYPEFONTS), so `kpsewhich
+% Tinos-Regular.ttf` finds the file while \setmainfont{Tinos} still does not.
+% Registering fonts/ with fontconfig and running fc-cache does work, but only on
+% Linux and never on Overleaf, whereas loading by path behaves identically
+% everywhere. Hence files for fonts/, family names for installed fonts.
+
+% 解析結果：要載入的名稱與 fontspec 選項。
+% The result of a lookup: the name to load and the fontspec options to load it
+% with.
+\newcommand{\ntu@font@name}{}
+\newcommand{\ntu@font@options}{}
+\newif\ifntu@font@found
+
+% 同目錄下的粗體／斜體。存在才掛上，缺哪個就少哪個，不會因此報錯。
+% A bold or italic face beside the upright one. Attached when the file is there;
+% a missing one is simply not attached.
+\newcommand{\ntu@font@sibling}[5]{%
+  \IfFileExists{#1#2#5#3}{\appto\ntu@font@options{, #4 = *#5}}{}%
 }
 
-% fontset = system
-%
-% 中英文都由作業系統以字族名稱解析，適合已經安裝 Times New Roman 與標楷體的
-% 機器。同樣先檢查再載入，避免 fontconfig 默默替換。
-% Both scripts resolved from installed system families. Checked before loading,
-% for the same reason as fontset=default.
-\ifthenelse{\equal{\ntu@fontset}{system}}{
-  \IfFontExistsTF{Times New Roman}{
-    \setmainfont{Times New Roman}
-  }{
-    \ntu@error{fontset=system needs Times New Roman installed system-wide}
-  }
-  \IfFontExistsTF{BiauKai}{
-    \setCJKmainfont{BiauKai}
-    \setCJKmonofont{BiauKai}
-  }{
-    \ntu@error{fontset=system needs 標楷體 (BiauKai) installed system-wide}
-  }
+% \ntu@font@probe{<目錄>}{<基本名稱>}{<副檔名>}{<正體字尾>}
+\newcommand{\ntu@font@probe}[4]{%
+  \ifntu@font@found\else
+    \IfFileExists{#1#2#4#3}{%
+      \ntu@font@foundtrue
+      \def\ntu@font@name{#2}%
+      \def\ntu@font@options{Path = #1, Extension = #3}%
+      \ifthenelse{\equal{#4}{}}{}{%
+        \appto\ntu@font@options{, UprightFont = *#4}%
+      }%
+      \ntu@font@sibling{#1}{#2}{#3}{BoldFont}{-Bold}%
+      \ntu@font@sibling{#1}{#2}{#3}{ItalicFont}{-Italic}%
+      \ntu@font@sibling{#1}{#2}{#3}{BoldItalicFont}{-BoldItalic}%
+    }{}%
+  \fi
 }
 
-% fontset = template
+% \ntu@font@resolve{<選項名稱>}{<目錄>}{<使用者給的值>}
 %
-% 使用者自行放進 fonts/ 的字型檔。檔名必須與下列一致，詳見 fonts/README.md。
-% User-supplied font files dropped into fonts/. Filenames must match exactly;
-% see fonts/README.md. A missing file is a hard error, which is the point.
-\ifthenelse{\equal{\ntu@fontset}{template}}{
-  \setmainfont{Times New Roman}[
-    Path = \ntu@path@font ,
-    Extension = .ttf ,
-    BoldFont = *-Bold ,
-    ItalicFont = *-Italic ,
-    BoldItalicFont = *-BoldItalic, ]
-  \setCJKmainfont{BiauKai}[
-    Path = \ntu@path@cjkfont ,
-    Extension = .ttf ,
-    BoldFont = Kaiti-Black, ]
-  \setCJKmonofont{BiauKai}[
-    Path = \ntu@path@cjkfont ,
-    Extension = .ttf ,
-    BoldFont = Kaiti-Black, ]
+% 字族名稱一定要先用 \IfFontExistsTF 檢查再載入。fontconfig 會拿 metric-compatible
+% 的字型頂替找不到的字族（本機執行 fc-match "Times New Roman" 就會看到 Tinos 或
+% Liberation Serif），排出來的 PDF 看起來正常，卻不是格式規範指定的字型。
+% \IfFontExistsTF 不受這種替換影響，會如實回報字型不存在，因此由它把關。
+%
+% A family name is always checked with \IfFontExistsTF before it is loaded.
+% fontconfig answers a request for a missing family with a metric-compatible
+% stand-in -- run fc-match "Times New Roman" and you may well see Tinos or
+% Liberation Serif -- which produces a plausible-looking PDF set in the wrong
+% typeface. \IfFontExistsTF is not fooled by that substitution, so it is what
+% makes the failure visible.
+\newcommand{\ntu@font@resolve}[3]{%
+  \ntu@font@foundfalse
+  \IfFileExists{#2#3}{%
+    \ntu@font@foundtrue
+    \def\ntu@font@name{#3}%
+    \def\ntu@font@options{Path = #2}%
+  }{}%
+  \ntu@font@probe{#2}{#3}{.ttf}{}%
+  \ntu@font@probe{#2}{#3}{.otf}{}%
+  \ntu@font@probe{#2}{#3}{.ttc}{}%
+  \ntu@font@probe{#2}{#3}{.ttf}{-Regular}%
+  \ntu@font@probe{#2}{#3}{.otf}{-Regular}%
+  \ntu@font@probe{#2}{#3}{.ttc}{-Regular}%
+  \ifntu@font@found\else
+    \IfFontExistsTF{#3}{%
+      \ntu@font@foundtrue
+      \def\ntu@font@name{#3}%
+      \def\ntu@font@options{}%
+    }{%
+      \ntu@error{%
+        #1 = "#3" was not found.\MessageBreak
+        Looked for the file #2#3, then for #3 with\MessageBreak
+        .ttf, .otf, and .ttc, with and without -Regular, in #2,\MessageBreak
+        then for a font family of that name installed on this system.\MessageBreak
+        Install the font, put the file in #2, or name one that is\MessageBreak
+        already there. See fonts/README.md%
+      }%
+    }%
+  \fi
 }
 
+% \ntu@font@options 必須在 fontspec 看到之前展開，否則整串選項會被當成一個鍵名。
+% \ntu@font@options has to be expanded before fontspec sees it, or the whole
+% list is read as a single key name.
+\newcommand{\ntu@font@set}[1]{%
+  \expandafter#1\expandafter[\ntu@font@options]{\ntu@font@name}%
+}
 
-% fontset = overleaf
-%
-% 以字族名稱解析 Overleaf 影像中既有的字型。fontset = default 在 Overleaf 上
-% 同樣可用且更可攜，此選項保留給偏好這組字型的使用者。
-% Resolves fonts present in Overleaf's image by family name. fontset = default
-% also works there and is more portable; this stays for anyone who prefers
-% these faces.
-\ifthenelse{\equal{\ntu@fontset}{overleaf}}{
-  \setmainfont{Times New Roman}
-  \setsansfont{Droid Sans}
-  \setmonofont{Courier New}
-  \setCJKmainfont{AR PL KaitiM Big5}
-  \setCJKsansfont{AR PL KaitiM Big5}
-  \setCJKmonofont{AR PL KaitiM Big5}
+% 字型在 preamble 結束時才解析，因為 engfont 與 cjkfont 是用 \ntusetup 設的，
+% 那是在載入類別之後才執行。\AtEndPreamble 仍在 \begin{document} 之前，xeCJK
+% 與 fontspec 都還沒收工，因此設字型的時機沒有變。
+% The lookups wait until the end of the preamble because engfont and cjkfont are
+% set with \ntusetup, which runs after the class is loaded. \AtEndPreamble is
+% still ahead of \begin{document}, where both xeCJK and fontspec do their own
+% begin-document work, so the fonts are still set in time.
+\AtEndPreamble{
+  % 英文字型。預設是格式規範指定的 Times New Roman，由系統提供：它是 Monotype 的
+  % 商業字型，不隨模板散布，但 Windows 與 macOS 都內建。沒有的人可以改成隨附的
+  % engfont = {Tinos}，字寬與 Times New Roman 相同，版面不會跑掉。
+  % The Latin face. The default is the Times New Roman the format rules name,
+  % taken from the system: it is proprietary and not shipped here, but Windows and
+  % macOS both have it. Without it, engfont = {Tinos} uses the bundled
+  % metric-compatible face, which keeps line breaks and page counts identical.
+  \ntu@font@resolve{engfont}{\ntu@path@font}{\ntu@engfont}
+  \ntu@font@set{\setmainfont}
+
+  % 中文字型。預設是隨附的全字庫正楷體 TW-Kai，以檔名載入，不必安裝任何東西。
+  % 臺大格式規範寫的是「中文以12號楷書（細明體及標楷體為主）」，因此預設楷體；
+  % 隨附的另一個選擇是 cjkfont = {TW-Sung-98_1.ttf}（全字庫正宋體）。
+  % 等寬字型設成同一個字型，中文才不會在 \texttt 與程式碼區塊裡掉字。
+  % The CJK face. The default is the bundled 全字庫正楷體 TW-Kai, loaded by
+  % filename so nothing has to be installed. NTU asks for 12 pt 楷書, hence 楷體;
+  % the other shipped face is cjkfont = {TW-Sung-98_1.ttf} (全字庫正宋體). The
+  % monospaced face is the same font, so CJK inside \texttt and code blocks does
+  % not fall back to a face that cannot set it.
+  \ntu@font@resolve{cjkfont}{\ntu@path@cjkfont}{\ntu@cjkfont}
+  \ntu@font@set{\setCJKmainfont}
+  \ntu@font@set{\setCJKmonofont}
 }
 
 % [顏色設定]

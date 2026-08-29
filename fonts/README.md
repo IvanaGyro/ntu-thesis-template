@@ -27,36 +27,72 @@ not reflow the document.
 Your own compiled thesis is unaffected by any of this: embedding a subset of a
 font in a PDF is normal use, and both licences permit it.
 
-## Choosing a set
+## Naming the two fonts
 
-`fontset` in `main.tex`:
+`main.tex` names one Latin face and one CJK face:
 
-| Value | English | Chinese |
-| --- | --- | --- |
-| `default` | **your system's Times New Roman** | shipped 全字庫 |
-| `tinos` | shipped Tinos | shipped 全字庫 |
-| `template` | your files in `english/` | your files in `chinese/` |
-| `system` | your installed Times New Roman | your installed 標楷體 |
-| `overleaf` | Overleaf's built-in fonts | Overleaf's built-in fonts |
+```latex
+\ntusetup{
+  engfont = {Times New Roman},   % fonts/english/, then the system
+  cjkfont = {TW-Kai-98_1.ttf},   % fonts/chinese/, then the system
+}
+```
 
-`cjkfont` picks which shipped face `default` and `tinos` use: `kai` (楷體, the
-default and what the format rules ask for) or `sung` (宋體).
+Each value is looked for in three places, in order, and the first hit wins:
 
-**`default` fails loudly when Times New Roman is missing.** That is deliberate.
+1. **The exact file** of that name in `english/` (for `engfont`) or `chinese/`
+   (for `cjkfont`) — `cjkfont = {TW-Kai-98_1.ttf}` loads that one file and
+   nothing else.
+2. **A base name** in the same directory: `engfont = {Tinos}` matches
+   `Tinos.ttf`, `.otf`, or `.ttc`, with or without a `-Regular` suffix, and
+   picks up `Tinos-Bold`, `Tinos-Italic`, and `Tinos-BoldItalic` beside it as
+   the bold and italic faces. This is the form to use for a family with several
+   styles; naming one file directly gets you that file alone.
+3. **A font family installed on the machine**, Overleaf's image included:
+   `engfont = {Times New Roman}`, `cjkfont = {BiauKai}`,
+   `cjkfont = {AR PL KaitiM Big5}`.
+
+The combinations worth knowing:
+
+| What you want | What to write |
+| --- | --- |
+| The format rules exactly, fonts from your system | `engfont = {Times New Roman}`, `cjkfont = {BiauKai}` |
+| The default: system Times New Roman, bundled Chinese | `engfont = {Times New Roman}`, `cjkfont = {TW-Kai-98_1.ttf}` |
+| Nothing installed, everything bundled | `engfont = {Tinos}`, `cjkfont = {TW-Kai-98_1.ttf}` |
+| Your own files dropped in here | `engfont = {Times New Roman}`, `cjkfont = {BiauKai}`, with the files named below |
+| Overleaf's built-in Chinese face | `cjkfont = {AR PL KaitiM Big5}` |
+
+These two keys replace the old `fontset` class option; a `main.tex` that still
+sets it stops with an error naming the pair to write instead. One thing does not
+carry over: the old `fontset = overleaf` also set a Latin sans and monospaced
+face (Droid Sans, Courier New), and nothing sets those now. Add `\setsansfont`
+and `\setmonofont` to `main.tex` if you want them — the body face is the only
+one NTU's rules name.
+
+**A font in this directory is found by file, never by family name.** XeTeX asks
+the operating system's font manager to resolve a family — fontconfig on Linux,
+CoreText on macOS, DirectWrite on Windows — and none of them knows about a
+directory inside your project. `OSFONTDIR` does not change that: it extends
+kpathsea's *filename* search, so `kpsewhich Tinos-Regular.ttf` finds the file
+while `\setmainfont{Tinos}` still does not. Registering this directory with
+fontconfig and running `fc-cache` would work, but only on Linux and never on
+Overleaf, whereas loading by path behaves identically everywhere.
+
+**A name that matches nothing fails the build.** That is deliberate.
 `fontconfig` answers a request for Times New Roman with a metric-compatible
 substitute — run `fc-match "Times New Roman"` and you may well see Tinos or
 Liberation Serif — which produces a PDF that looks right but is set in a font
-the rules do not name. Rather than let that pass silently, the class checks
-first and stops with a message telling you to install the font or switch to
-`fontset = tinos`.
+the rules do not name. Rather than let that pass silently, the class checks with
+`\IfFontExistsTF`, which is not fooled by the substitution, and stops with a
+message listing everything it tried.
 
 Windows and macOS ship Times New Roman. Most Linux distributions do not; use
-`fontset = tinos` there, or install the font yourself.
+`engfont = {Tinos}` there, or install the font yourself.
 
 ## Using the exact fonts NTU names
 
-To typeset with real Times New Roman, 標楷體, and 新細明體, put the files here
-and set `fontset = template`:
+To typeset with real Times New Roman and 標楷體 without installing them, put the
+files here and keep the names in `main.tex` matching:
 
 ```
 fonts/english/Times New Roman.ttf
@@ -64,11 +100,23 @@ fonts/english/Times New Roman-Bold.ttf
 fonts/english/Times New Roman-Italic.ttf
 fonts/english/Times New Roman-BoldItalic.ttf
 fonts/chinese/BiauKai.ttf
-fonts/chinese/Kaiti-Black.ttf       (optional; used as the CJK bold face)
+fonts/chinese/BiauKai-Bold.ttf      (optional; becomes the CJK bold face)
 ```
 
-The filenames matter — `ntuthesis.cls` loads them by name through `fontspec`'s
-`Path`/`Extension` options, and a missing file is a compile-time error.
+```latex
+\ntusetup{
+  engfont = {Times New Roman},
+  cjkfont = {BiauKai},
+}
+```
+
+The suffixes are what matter: the upright face is the bare name (or `-Regular`),
+and `-Bold`, `-Italic`, and `-BoldItalic` beside it are attached automatically.
+A file under any other name is simply not found, so rename rather than hope —
+`Kaiti-Black.ttf`, which earlier versions of this template used as the CJK bold
+face, has to become `BiauKai-Bold.ttf` to be picked up. With the files in place,
+these names resolve here and never reach the system, so the same `main.tex`
+builds on a machine where the fonts are installed and on one where they are not.
 
 Where to get them:
 
@@ -83,5 +131,6 @@ to you, not to this repository, so **do not commit them**. `.gitignore` covers
 `fonts/**/*.ttf` with an exception only for the freely licensed files listed
 above, so an accidental `git add -A` cannot pick them up.
 
-If the fonts are installed system-wide rather than copied here, use
-`fontset = system` instead and `fontspec` resolves them by family name.
+If the fonts are installed system-wide rather than copied here, the same
+`engfont = {Times New Roman}`, `cjkfont = {BiauKai}` finds them: nothing matches
+in `fonts/`, so the lookup falls through to the system's own font manager.

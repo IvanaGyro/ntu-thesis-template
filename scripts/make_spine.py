@@ -315,40 +315,57 @@ def matched_font(family: str) -> FontFile | None:
     return FontFile(Path(path), int(index) if index.isdigit() else 0)
 
 
-# 中文字型的來源，抄自 ntuthesis.cls 的 fontset 與 cjkfont 分支。
-# Where the class loads its Chinese face from, per fontset:
-#   default, tinos, (unset)  the shipped file cjkfont names, by path
-#   template                 the user's own BiauKai.ttf, by path
-#   system, overleaf         a family name, resolved by the machine
+# 中文字型的來源，抄自 ntuthesis.cls 的解析順序：先當成 fonts/chinese/ 裡的檔案，
+# 再當成系統安裝的字族名稱。改動任何一邊都要同時改另一邊。
+# Where the class loads its Chinese face from, in the order the class tries it:
+# the file cjkfont names in fonts/chinese/, that name with an extension (with or
+# without -Regular), then a font family installed on the machine. The two sides
+# have to be changed together.
 CJK_DIRECTORY = "fonts/chinese"
-CJK_SHIPPED = {"kai": "TW-Kai-98_1.ttf", "sung": "TW-Sung-98_1.ttf"}
-CJK_TEMPLATE_FILE = "BiauKai.ttf"
-CJK_FAMILIES = {"system": "BiauKai", "overleaf": "AR PL KaitiM Big5"}
+CJK_EXTENSIONS = (".ttf", ".otf", ".ttc")
+CJK_UPRIGHT = ("", "-Regular")
+# ntuthesis.cls's own default for cjkfont, used when main.tex names no font.
+CJK_DEFAULT = "TW-Kai-98_1.ttf"
 
 
-def locate_font(options: dict[str, str], root: Path) -> FontFile:
+def shipped_font(directory: Path, name: str) -> Path | None:
+    """The file in fonts/chinese/ that `name` picks out, or None for a family."""
+    if (directory / name).is_file():
+        return directory / name
+    for suffix in CJK_UPRIGHT:
+        for extension in CJK_EXTENSIONS:
+            candidate = directory / f"{name}{suffix}{extension}"
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def cjk_font_name(root: Path) -> str:
+    """What main.tex sets cjkfont to, or the class's default when it says nothing."""
+    try:
+        setup = parse_ntusetup(root / "main.tex")
+    except CollectionError:
+        # A main.tex with no \ntusetup block at all still builds, on the
+        # defaults; the spine should not be the one thing that stops working.
+        setup = {}
+    return setup.get("cjkfont", CJK_DEFAULT)
+
+
+def locate_font(root: Path) -> FontFile:
     """The file the class sets Chinese in, found the way the class finds it."""
-    fontset = options.get("fontset", "default")
-    if fontset in CJK_FAMILIES:
-        family = CJK_FAMILIES[fontset]
-        candidate = matched_font(family)
-        if candidate and any(same_font(family, found) for found in font_names(candidate)):
-            return candidate
-        raise CollectionError(
-            f"main.tex builds with fontset = {fontset}, which sets Chinese in "
-            f"{family}, and no such face is installed on this machine. Install "
-            "it, or build with a fontset whose Chinese face ships with the template."
-        )
-    if fontset == "template":
-        path = root / CJK_DIRECTORY / CJK_TEMPLATE_FILE
-    else:
-        path = root / CJK_DIRECTORY / CJK_SHIPPED.get(options.get("cjkfont", "kai"), "")
-    if not path.is_file():
-        raise CollectionError(
-            f"main.tex builds with fontset = {fontset}, which sets Chinese in "
-            f"{path}, and that file is not there. See fonts/README.md."
-        )
-    return FontFile(path)
+    name = cjk_font_name(root)
+    path = shipped_font(root / CJK_DIRECTORY, name)
+    if path is not None:
+        return FontFile(path)
+    candidate = matched_font(name)
+    if candidate and any(same_font(name, found) for found in font_names(candidate)):
+        return candidate
+    raise CollectionError(
+        f"main.tex sets cjkfont = {name}, which is neither a file in "
+        f"{CJK_DIRECTORY}/ nor a font family installed on this machine. Install "
+        "it, or name a Chinese face that ships with the template. See "
+        "fonts/README.md."
+    )
 
 
 # The faces this template redistributes. Their licences (政府資料開放授權條款-1.0,
@@ -382,8 +399,7 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[byt
     if level & FSTYPE_RESTRICTED:
         raise CollectionError(
             f"{font.name} forbids embedding, so it cannot travel inside the spine "
-            "files. Build the thesis with a fontset whose Chinese face ships with "
-            "the template."
+            "files. Set cjkfont to a Chinese face that ships with the template."
         )
     if rights & FSTYPE_BITMAP_ONLY:
         # A spine is lettered at whatever size it takes, and what would travel
@@ -391,8 +407,8 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[byt
         # to go cannot go, whatever else its rights permit.
         raise CollectionError(
             f"{font.name} allows only its bitmaps to be embedded, not its outlines, "
-            "which is what the spine files carry. Build the thesis with a fontset "
-            "whose Chinese face ships with the template."
+            "which is what the spine files carry. Set cjkfont to a Chinese face "
+            "that ships with the template."
         )
 
     options = subset.Options()
@@ -1310,7 +1326,7 @@ def build(args: argparse.Namespace) -> None:
             )
         pages = document.page_count
 
-    font_file = locate_font(class_options(PROJECT_ROOT / "main.tex"), PROJECT_ROOT)
+    font_file = locate_font(PROJECT_ROOT)
     logging.info("The thesis sets Chinese in %s", font_file.path)
     text = read_spine_text(PROJECT_ROOT)
     absent = missing_characters(font_file, text.characters())
