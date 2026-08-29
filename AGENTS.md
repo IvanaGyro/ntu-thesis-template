@@ -81,10 +81,13 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   [Hsins/NTU-Thesis-LaTeX-Template](https://github.com/Hsins/NTU-Thesis-LaTeX-Template)
   (MIT, © 2017 Hsin-Hsiang Peng). MIT requires that copyright notice to travel
   with the work, so `LICENSE` must keep both copyright lines.
-- Comments are English, and carry only what a reader cannot get from the code:
-  how to call a command, what a value may be, a constraint that is not obvious.
-  Reasoning for a change belongs in its commit message, not in a comment or a
-  README.
+- Comments explaining a setting the user edits are bilingual, Chinese first:
+  the class options, `\ntufontsetup` and `\ntusetup` in `main.tex`, and all of
+  `ntusetup.tex`. Every other comment — the class internals, `scripts/` — is
+  English only.
+- A comment carries only what a reader cannot get from the code: how to call a
+  command, what a value may be, a constraint that is not obvious. Reasoning for
+  a change belongs in its commit message, not in a comment or a README.
 - Any change to a class option, to how `\ntufontsetup` resolves a font, or to the
   inclusion order has to be reflected in `README.md`'s edit-order table.
 
