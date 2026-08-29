@@ -33,7 +33,7 @@ font in a PDF is normal use, and both licences permit it.
 
 ```latex
 \ntusetup{
-  engfont = {Times New Roman},   % fonts/english/, then the system
+  engfont = {Tinos},             % fonts/english/, then the system
   cjkfont = {TW-Kai-98_1.ttf},   % fonts/chinese/, then the system
 }
 ```
@@ -56,9 +56,9 @@ The combinations worth knowing:
 
 | What you want | What to write |
 | --- | --- |
+| The default: nothing installed, everything bundled | `engfont = {Tinos}`, `cjkfont = {TW-Kai-98_1.ttf}` |
 | The format rules exactly, fonts from your system | `engfont = {Times New Roman}`, `cjkfont = {BiauKai}` |
-| The default: system Times New Roman, bundled Chinese | `engfont = {Times New Roman}`, `cjkfont = {TW-Kai-98_1.ttf}` |
-| Nothing installed, everything bundled | `engfont = {Tinos}`, `cjkfont = {TW-Kai-98_1.ttf}` |
+| The rules' English face, bundled Chinese | `engfont = {Times New Roman}`, `cjkfont = {TW-Kai-98_1.ttf}` |
 | Your own files dropped in here | `engfont = {Times New Roman}`, `cjkfont = {BiauKai}`, with the files named below |
 | Overleaf's built-in Chinese face | `cjkfont = {AR PL KaitiM Big5}` |
 
@@ -82,8 +82,12 @@ the rules do not name. Rather than let that pass silently, the class checks with
 `\IfFontExistsTF`, which is not fooled by the substitution, and stops with a
 message listing everything it tried.
 
-Windows and macOS ship Times New Roman. Most Linux distributions do not; use
-`engfont = {Tinos}` there, or install the font yourself.
+The default `engfont = {Tinos}` is a deliberate trade: the template compiles on
+a fresh clone anywhere, at the cost of naming a metric-compatible clone rather
+than the Times New Roman the rules ask for. Windows and macOS ship Times New
+Roman, so write `engfont = {Times New Roman}` there. Most Linux distributions do
+not; install it yourself, or keep Tinos and check with your department before
+submitting.
 
 ## Using the exact fonts NTU names
 

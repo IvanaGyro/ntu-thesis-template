@@ -117,7 +117,7 @@ Both fonts are named in `main.tex`:
 
 ```latex
 \ntusetup{
-  engfont = {Times New Roman},
+  engfont = {Tinos},
   cjkfont = {TW-Kai-98_1.ttf},
 }
 ```
@@ -131,18 +131,22 @@ machine, looked for in that order:
 | `Tinos` | `Tinos.ttf`, `.otf`, or `.ttc` in the same directory, with or without a `-Regular` suffix. Any `Tinos-Bold`, `Tinos-Italic`, and `Tinos-BoldItalic` beside it become the bold and italic faces. |
 | `Times New Roman` | a font family installed on the system, Overleaf's image included |
 
-The shipped default is the pair the format rules name: **your system's Times New
-Roman** — proprietary, present on Windows and macOS, and not shipped here — with
-the bundled **全字庫正楷體 TW-Kai**. `cjkfont = {TW-Sung-98_1.ttf}` switches the
+Both defaults are fonts this repository ships, so a fresh clone compiles
+anywhere with nothing installed, Overleaf included: **Tinos** for English and
+**全字庫正楷體 TW-Kai** for Chinese. `cjkfont = {TW-Sung-98_1.ttf}` switches the
 Chinese face to **全字庫正宋體 TW-Sung**.
 
-When none of the three finds anything, the build **stops with an error** rather
-than quietly substituting a look-alike: fontconfig answers a request for a
-missing Times New Roman with a metric-compatible stand-in, and the PDF that
-comes out looks right while being set in a font the rules do not name. Write
-`engfont = {Tinos}` to use the bundled, metric-compatible face on purpose; with
-the bundled Chinese face, that combination needs no installed fonts at all and
-always compiles, Overleaf included.
+NTU's rules name **Times New Roman**, and Tinos is a metric-compatible clone of
+it, not the font itself — same widths, so line breaks and page counts are
+identical, but a different name in the PDF. Write `engfont = {Times New Roman}`
+on a machine that has it (Windows and macOS both do; it is proprietary, so it is
+not shipped here), and check with your department before submitting if you keep
+Tinos.
+
+When none of the three lookups finds anything, the build **stops with an error**
+rather than quietly substituting a look-alike: fontconfig answers a request for
+a missing Times New Roman with a metric-compatible stand-in, and the PDF that
+comes out looks right while being set in a font you did not choose.
 
 A font in `fonts/` cannot be named by its family, only by its file: XeTeX
 resolves family names through the operating system's font manager, which knows

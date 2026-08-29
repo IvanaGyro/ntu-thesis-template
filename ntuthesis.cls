@@ -327,7 +327,7 @@
 % keeps the spaces.
 \ntu@define@key{
   engfont = {
-    default = {Times New Roman},
+    default = {Tinos},
   },
   cjkfont = {
     default = {TW-Kai-98_1.ttf},
@@ -869,21 +869,44 @@
   \expandafter#1\expandafter[\ntu@font@options]{\ntu@font@name}%
 }
 
-% 字型在 preamble 結束時才解析，因為 engfont 與 cjkfont 是用 \ntusetup 設的，
-% 那是在載入類別之後才執行。\AtEndPreamble 仍在 \begin{document} 之前，xeCJK
-% 與 fontspec 都還沒收工，因此設字型的時機沒有變。
-% The lookups wait until the end of the preamble because engfont and cjkfont are
-% set with \ntusetup, which runs after the class is loaded. \AtEndPreamble is
-% still ahead of \begin{document}, where both xeCJK and fontspec do their own
-% begin-document work, so the fonts are still set in time.
+% 為什麼要等到 preamble 結束才解析字型：
+%
+% engfont 與 cjkfont 是 \ntusetup 的鍵，而 \ntusetup 要等類別載入完、輪到
+% main.tex 的 preamble 才會執行。類別讀到這一行時，兩個值都還是預設值，這時候
+% 設字型就等於忽略使用者寫的東西。而且 \ntusetup 可以呼叫任意多次——main.tex
+% 有兩塊，ntusetup.tex 還有一塊——類別無從知道哪一次是最後一次，preamble 結束
+% 才是「所有 \ntusetup 都跑完了」的第一個時間點。
+%
+% 用 \AtEndPreamble 而不是 \AtBeginDocument：\AtEndPreamble 早於「每一個」
+% \AtBeginDocument，與註冊順序無關，因此字型必定在 xeCJK 與 fontspec 各自的
+% begin-document 工作之前就設好，不必去猜套件之間的掛鉤順序。
+%
+% Why the lookups wait for the end of the preamble:
+%
+% engfont and cjkfont are \ntusetup keys, and \ntusetup does not run until the
+% class has been loaded and main.tex's preamble takes over. At this point in the
+% class both keys still hold their defaults, so setting the fonts here would
+% ignore whatever the user wrote. \ntusetup may also be called any number of
+% times -- main.tex has two blocks and ntusetup.tex another -- and the class
+% cannot know which call is the last, so the end of the preamble is the first
+% moment at which all of them have run.
+%
+% \AtEndPreamble rather than \AtBeginDocument: \AtEndPreamble runs before every
+% \AtBeginDocument hook, whatever the order of registration, so the fonts are
+% set before xeCJK and fontspec do their own begin-document work and no hook
+% ordering between packages has to be guessed at.
 \AtEndPreamble{
-  % 英文字型。預設是格式規範指定的 Times New Roman，由系統提供：它是 Monotype 的
-  % 商業字型，不隨模板散布，但 Windows 與 macOS 都內建。沒有的人可以改成隨附的
-  % engfont = {Tinos}，字寬與 Times New Roman 相同，版面不會跑掉。
-  % The Latin face. The default is the Times New Roman the format rules name,
-  % taken from the system: it is proprietary and not shipped here, but Windows and
-  % macOS both have it. Without it, engfont = {Tinos} uses the bundled
-  % metric-compatible face, which keeps line breaks and page counts identical.
+  % 英文字型。預設是隨模板散布的 Tinos，以檔案載入，不必安裝任何字型，Overleaf
+  % 上也一定編得出來。Tinos 的字寬與 Times New Roman 相同（metric-compatible），
+  % 版面配置一致，但字型名稱不是規範所寫的 Times New Roman。機器上裝有
+  % Times New Roman 的人請改成 engfont = {Times New Roman}；它是 Monotype 的商業
+  % 字型，不隨模板散布，但 Windows 與 macOS 都內建。
+  % The Latin face. The default is the bundled Tinos, loaded from the file so
+  % that nothing has to be installed and Overleaf always compiles. Tinos is
+  % metric-compatible with Times New Roman, so line breaks and page counts
+  % match, but it is not the typeface the format rules name. Write
+  % engfont = {Times New Roman} on a machine that has it: it is proprietary and
+  % not shipped here, but Windows and macOS both carry it.
   \ntu@font@resolve{engfont}{\ntu@path@font}{\ntu@engfont}
   \ntu@font@set{\setmainfont}
 
