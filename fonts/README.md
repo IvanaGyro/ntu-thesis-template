@@ -62,12 +62,8 @@ The combinations worth knowing:
 | Your own files dropped in here | `engfont = {Times New Roman}`, `cjkfont = {BiauKai}`, with the files named below |
 | Overleaf's built-in Chinese face | `cjkfont = {AR PL KaitiM Big5}` |
 
-These two keys replace the old `fontset` class option; a `main.tex` that still
-sets it stops with an error naming the pair to write instead. One thing does not
-carry over: the old `fontset = overleaf` also set a Latin sans and monospaced
-face (Droid Sans, Courier New), and nothing sets those now. Add `\setsansfont`
-and `\setmonofont` to `main.tex` if you want them — the body face is the only
-one NTU's rules name.
+Nothing sets a Latin sans or monospaced face; NTU's rules name only the body
+face. Add `\setsansfont` and `\setmonofont` to `main.tex` if you want them.
 
 **A font in this directory is found by file, never by family name.** XeTeX asks
 the operating system's font manager to resolve a family — fontconfig on Linux,

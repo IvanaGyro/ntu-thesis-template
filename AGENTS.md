@@ -107,9 +107,6 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   runs its option list through `\zap@space`, which turns
   `engfont = {Times New Roman}` into `TimesNewRoman`. Their lookup therefore
   waits for `\AtEndPreamble`, once main.tex's `\ntusetup` has run.
-- `fontset` survives as a key that only raises, so an old main.tex is told what
-  to write instead of being handed to `report` by `\DeclareDefaultOption` and
-  built silently on the new defaults.
 - `fonts/` is ~72 MB, almost all of it the two 全字庫 TTFs. Adding the `Ext-B`
   or `Plus` variants would roughly double that for characters a thesis will not
   use.

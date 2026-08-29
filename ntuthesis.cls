@@ -257,14 +257,6 @@
     },
     default = chinese,
   },
-  % fontset 已由 engfont 與 cjkfont 取代。留著這個鍵是為了讓舊的 main.tex 得到
-  % 一則說明，而不是被 \DeclareDefaultOption 默默丟給 report 之後改用預設字型。
-  % fontset has been replaced by engfont and cjkfont. The key stays so that an
-  % old main.tex gets an explanation instead of having \DeclareDefaultOption
-  % quietly hand it to report and build in whatever the new defaults are.
-  fontset = {
-    default = {},
-  },
   mathfont = {
     choices = {
       default,
@@ -747,28 +739,6 @@
 % - \setCJKsansfont{}			中文非襯字體
 % - \setCJKmonofont{}			中文等寬字體
 %
-
-% fontset 在此版本被 engfont 與 cjkfont 取代。舊的 main.tex 若還寫著它，這裡直接
-% 報錯說明對照方式——否則 \DeclareDefaultOption 會把 fontset 丟給 report，report
-% 不認得就只留下一行 "Unused global option" 警告，論文照樣編得出來，卻是用新的
-% 預設字型排的，而字型換了看起來不一定明顯。
-% fontset was replaced by engfont and cjkfont in this version. An old main.tex
-% that still sets it gets an error explaining the move, rather than the silent
-% path: \DeclareDefaultOption hands fontset to report, report does not know it,
-% and the build goes through on the new defaults with nothing but an "Unused
-% global option" warning to show for it.
-\ifthenelse{\equal{\ntu@fontset}{}}{}{%
-  \ntu@error{%
-    fontset = \ntu@fontset\space is no longer a class option. Set the two\MessageBreak
-    fonts directly instead:\MessageBreak
-    default -> engfont = {Times New Roman}, cjkfont = {TW-Kai-98_1.ttf}\MessageBreak
-    tinos -> engfont = {Tinos}, cjkfont = {TW-Kai-98_1.ttf}\MessageBreak
-    template -> engfont = {Times New Roman}, cjkfont = {BiauKai}\MessageBreak
-    system -> engfont = {Times New Roman}, cjkfont = {BiauKai}\MessageBreak
-    overleaf -> engfont = {Times New Roman}, cjkfont = {AR PL KaitiM Big5}\MessageBreak
-    cjkfont = sung is now cjkfont = {TW-Sung-98_1.ttf}. See fonts/README.md%
-  }%
-}
 
 % [字型解析]
 % Font resolution
