@@ -259,7 +259,13 @@ def read_spine_text(root: Path) -> SpineText:
 
 
 def reduced(value: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", value.lower())
+    """A font name with the spacing and punctuation that never matter taken out.
+
+    Word characters of every script are kept. Reducing to ASCII would leave a
+    CJK family name empty, which makes every one of them equal to every other:
+    standing 標楷體 next to 新細明體 would be a match rather than a mismatch.
+    """
+    return re.sub(r"[\W_]+", "", value.lower())
 
 
 def same_font(name: str, candidate: str) -> bool:
@@ -281,15 +287,38 @@ class FontFile:
         return TTFont(self.path, fontNumber=self.index, **kwargs)
 
 
+# The name table entries a face answers to: 1 family, 4 full, 6 PostScript.
+FONT_NAME_IDS = (1, 4, 6)
+
+
 def font_names(font: FontFile) -> tuple[str, ...]:
-    """The family, full and PostScript names a face answers to."""
+    """Every name the face answers to, its localized ones included.
+
+    A face carries one record per name and language, and cjkfont may be written
+    as any of them: TW-Kai calls itself 全字庫正楷體 in Chinese, and fontconfig
+    answers to both, so a lookup that read only the preferred name would reject
+    the very font the thesis builds with. The preferred names come first, so
+    font_names(...)[0] is still the family name to letter the spine with.
+    """
     try:
         with font.open(lazy=True) as opened:
             table = opened["name"]
-            return tuple(name for name in (table.getDebugName(i) for i in (1, 4, 6)) if name)
+            found = [table.getDebugName(identifier) for identifier in FONT_NAME_IDS]
+            # backslashreplace, as getDebugName itself uses: one malformed record
+            # should cost that record, not every name the face has.
+            found += [
+                record.toUnicode(errors="backslashreplace")
+                for record in table.names
+                if record.nameID in FONT_NAME_IDS
+            ]
     except Exception:  # noqa: BLE001 - fontTools raises a different type per defect
         logging.debug("Not a readable font: %s", font.name)
         return ()
+    names: list[str] = []
+    for name in found:
+        if name and name not in names:
+            names.append(name)
+    return tuple(names)
 
 
 def matched_font(family: str) -> FontFile | None:

@@ -71,8 +71,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   bibliography unnoticed.
 - Never commit a real signed verification letter, a real DOI, a real student
   ID, or a real acknowledgement.
-- Never commit proprietary font files. `fonts/**/*.ttf` is gitignored except for
-  the freely licensed faces the template ships (Tinos, 全字庫 TW-Kai/TW-Sung).
+- Never commit proprietary font files. Every extension `engfont`/`cjkfont` can
+  load — `.ttf`, `.otf`, `.ttc` — is gitignored under `fonts/`, except for the
+  freely licensed faces the template ships (Tinos, 全字庫 TW-Kai/TW-Sung).
+  Widening the resolver to another extension means widening `.gitignore` too.
   Times New Roman and 標楷體 are proprietary; upstream bundles them, this fork
   deliberately does not.
 - MIT licensed, derived from
@@ -162,6 +164,12 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   every `\ntusetup` block in a file, because main.tex now has two.
 - `scripts/make_spine.py` resolves `cjkfont` exactly as `ntuthesis.cls` does and
   has to keep doing so: same probe order, same default (`TW-Kai-98_1.ttf`).
+- When `cjkfont` names an installed family, the spine matches it against
+  `font_names`, which must keep the face's *localized* name records: a font
+  answers to both (TW-Kai is also 全字庫正楷體) and either may be written.
+  `reduced` must likewise keep word characters of every script — reducing to
+  ASCII leaves every CJK name empty, and empty compares equal to empty, so
+  標楷體 would match 新細明體.
 - The spine stretches its rows between two hard-coded points, `COVER_TOP_PT`
   and `COVER_BOTTOM_PT`, where `\makecover`'s fixed 3 cm margins and its
   `\vfill`s put the cover's first and last lines. Changing
