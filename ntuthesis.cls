@@ -709,187 +709,61 @@
 \setlength{\parskip}{10pt}
 \setlength{\parindent}{2em}
 
-% [字體設定]
-% - \setmainfont{}          	襯線字體
-% - \setsansfont{}          	非襯字體
-% - \setmonofont{}          	等寬字體
-% - \setCJKmainfont{}			中文襯線字體
-% - \setCJKsansfont{}			中文非襯字體
-% - \setCJKmonofont{}			中文等寬字體
-%
+% [字型設定]
+% Fonts
 
-% [字型解析]
-% Font resolution
+% \ntu@font@set{<key>}{<setter>}{<directory>}{<font>}{<options>}
 %
-% 字型由 main.tex 裡 \documentclass 下面的四個變數決定：
-%
-%   \ntuengfont          英文字型，\ntucjkfont          中文字型
-%   \ntuengfontoptions   追加的 fontspec 選項，\ntucjkfontoptions 同理
-%
-% 設定完之後由 main.tex 呼叫 \ntusetfonts 一次，字型才會生效。
-%
-% 字型變數可以填兩種東西，依序尋找，先找到的先用：
-%
-%   1. fonts/english/（中文為 fonts/chinese/）裡的字型檔，例如
-%      Tinos-Regular.ttf。直接寫檔名，或省略 .ttf／.otf／.ttc 副檔名。
-%   2. 作業系統（含 Overleaf 影像）已安裝的字族名稱，例如 Times New Roman。
-%
-% 兩種都找不到就報錯，不會默默改用別的字型。
-%
-% 粗體與斜體怎麼來，兩種寫法不一樣：
-%   * 填字族名稱時，字型管理員知道整個字族有哪些字重與斜體，fontspec 會自動配
-%     對，options 變數留空即可。
-%   * 填檔名時，一個檔案就是一個字面，fontspec 沒有辦法猜出旁邊還有哪些檔案。
-%     粗體與斜體要自己寫進 options 變數，例如
-%     BoldFont = Tinos-Bold.ttf, ItalicFont = Tinos-Italic.ttf。
-%     不寫也能編譯，但 \textbf 與 \textit 會退回正體，LaTeX 會發出
-%     "Font shape ... undefined" 警告。
-%
-% The fonts come from four variables in main.tex, just below \documentclass:
-% \ntuengfont and \ntucjkfont name the faces, \ntuengfontoptions and
-% \ntucjkfontoptions carry any extra fontspec options. main.tex then calls
-% \ntusetfonts once to apply them.
-%
-% A font variable takes one of two things, tried in order:
-%
-%   1. A font file in fonts/english/ (fonts/chinese/ for CJK), such as
-%      Tinos-Regular.ttf, written with or without its .ttf/.otf/.ttc extension.
-%   2. A font family installed on the system, Overleaf's image included, such
-%      as Times New Roman.
-%
-% Neither matching is an error, never a silent substitution.
-%
-% Where bold and italic come from differs between the two:
-%   * A family name is resolved by the platform's font manager, which knows
-%     every weight and slant the family has, so fontspec pairs them up by
-%     itself and the options variable can stay empty.
-%   * A filename is one face and nothing else; fontspec cannot guess which
-%     other files sit beside it. Name them in the options variable --
-%     BoldFont = Tinos-Bold.ttf, ItalicFont = Tinos-Italic.ttf -- or \textbf
-%     and \textit fall back to the upright, with a "Font shape ... undefined"
-%     warning to say so.
-%
-% 為什麼 fonts/ 裡的字型不能直接用字族名稱找到：XeTeX 解析字族名稱靠的是作業系統
-% 的字型管理員（Linux 是 fontconfig，macOS 是 CoreText，Windows 是 DirectWrite），
-% 專案目錄不在它們的搜尋範圍裡。OSFONTDIR 也幫不上忙，它只擴充 kpathsea 依「檔名」
-% 搜尋的路徑（TTFONTS／OPENTYPEFONTS），所以 kpsewhich Tinos-Regular.ttf 找得到檔案，
-% \setmainfont{Tinos} 仍然找不到字型。把 fonts/ 註冊進 fontconfig 再跑 fc-cache 確實
-% 可行，但那是 Linux 限定，Overleaf 上也做不到；以路徑載入則到哪裡都一樣，因此
-% fonts/ 一律走檔案，系統字型才走字族名稱。
-%
-% Why a font in fonts/ cannot be found by family name: XeTeX resolves family
-% names through the platform's font manager -- fontconfig on Linux, CoreText on
-% macOS, DirectWrite on Windows -- and a directory inside the project is on none
-% of their search paths. OSFONTDIR does not help either; it extends only
-% kpathsea's *filename* search (TTFONTS/OPENTYPEFONTS), so `kpsewhich
-% Tinos-Regular.ttf` finds the file while \setmainfont{Tinos} still does not.
-% Registering fonts/ with fontconfig and running fc-cache does work, but only on
-% Linux and never on Overleaf, whereas loading by path behaves identically
-% everywhere. Hence files for fonts/, family names for installed fonts.
-
-% 解析結果：要載入的名稱，與類別自己算出來的 fontspec 選項。
-% The result of a lookup: the name to load, and the fontspec options the class
-% works out for it.
-\newcommand{\ntu@font@name}{}
-\newcommand{\ntu@font@options}{}
-\newif\ifntu@font@found
-
-% \ntu@font@probe{<目錄>}{<檔名>}{<副檔名>}
-\newcommand{\ntu@font@probe}[3]{%
-  \ifntu@font@found\else
-    \IfFileExists{#1#2#3}{%
-      \ntu@font@foundtrue
-      \def\ntu@font@name{#2#3}%
-      \def\ntu@font@options{Path = #1}%
-    }{}%
-  \fi
-}
-
-% \ntu@font@resolve{<變數名稱>}{<目錄>}{<使用者填的值>}
-%
-% 字族名稱一定要先用 \IfFontExistsTF 檢查再載入。fontconfig 會拿 metric-compatible
-% 的字型頂替找不到的字族（本機執行 fc-match "Times New Roman" 就會看到 Tinos 或
-% Liberation Serif），排出來的 PDF 看起來正常，卻不是格式規範指定的字型。
-% \IfFontExistsTF 不受這種替換影響，會如實回報字型不存在，因此由它把關。
-%
-% A family name is always checked with \IfFontExistsTF before it is loaded.
-% fontconfig answers a request for a missing family with a metric-compatible
-% stand-in -- run fc-match "Times New Roman" and you may well see Tinos or
-% Liberation Serif -- which produces a plausible-looking PDF set in the wrong
-% typeface. \IfFontExistsTF is not fooled by that substitution, so it is what
-% makes the failure visible.
-\newcommand{\ntu@font@resolve}[3]{%
-  \ntu@font@foundfalse
-  \ntu@font@probe{#2}{#3}{}%
-  \ntu@font@probe{#2}{#3}{.ttf}%
-  \ntu@font@probe{#2}{#3}{.otf}%
-  \ntu@font@probe{#2}{#3}{.ttc}%
-  \ifntu@font@found\else
-    \IfFontExistsTF{#3}{%
-      \ntu@font@foundtrue
-      \def\ntu@font@name{#3}%
-      \def\ntu@font@options{}%
+% <font> is a file in <directory> or a font family installed on the system, and
+% the file wins. A family name is checked with \IfFontExistsTF, which unlike
+% fontconfig does not answer with a metric-compatible substitute.
+\newcommand{\ntu@font@set}[5]{%
+  \ifthenelse{\equal{#4}{}}{%
+    \ntu@error{%
+      #1 is empty. Name a font file in #3, or a font family\MessageBreak
+      installed on this system, in \string\ntufontsetup.\MessageBreak
+      See fonts/README.md%
+    }%
+  }{%
+    \IfFileExists{#3#4}{%
+      \ifthenelse{\equal{#5}{}}
+        {\edef\ntu@font@args{Path = #3}}
+        {\edef\ntu@font@args{Path = #3, #5}}%
+      \expandafter#2\expandafter[\ntu@font@args]{#4}%
     }{%
-      \ntu@error{%
-        #1 = "#3" was not found.\MessageBreak
-        Looked in #2 for that file, with and without a\MessageBreak
-        .ttf, .otf, or .ttc extension, then for a font family of\MessageBreak
-        that name installed on this system.\MessageBreak
-        Install the font, put the file in #2, or name one that is\MessageBreak
-        already there. See fonts/README.md%
+      \IfFontExistsTF{#4}{%
+        \edef\ntu@font@args{#5}%
+        \expandafter#2\expandafter[\ntu@font@args]{#4}%
+      }{%
+        \ntu@error{%
+          #1 = "#4" was not found. It is neither a file in\MessageBreak
+          #3 nor a font family installed on this system.\MessageBreak
+          See fonts/README.md%
+        }%
       }%
     }%
-  \fi
+  }%
 }
 
-% \ntu@font@set{<設定命令>}{<使用者追加的選項>}
-%
-% 選項清單必須在 fontspec 看到之前完全展開，否則整串會被當成一個鍵名。
-% The option list has to be fully expanded before fontspec sees it, or the whole
-% list is read as a single key name.
-\newcommand{\ntu@font@set}[2]{%
-  \ifthenelse{\equal{#2}{}}
-    {\edef\ntu@font@args{\ntu@font@options}}
-    {\ifthenelse{\equal{\ntu@font@options}{}}
-      {\edef\ntu@font@args{#2}}
-      {\edef\ntu@font@args{\ntu@font@options, #2}}}%
-  \expandafter#1\expandafter[\ntu@font@args]{\ntu@font@name}%
-}
+\define@key{ntu@font}{engfont}{\def\ntu@engfont{#1}}
+\define@key{ntu@font}{engfontoptions}{\def\ntu@engfontoptions{#1}}
+\define@key{ntu@font}{cjkfont}{\def\ntu@cjkfont{#1}}
+\define@key{ntu@font}{cjkfontoptions}{\def\ntu@cjkfontoptions{#1}}
 
-% \ntusetfonts：讀上面那四個變數，把字型設好。main.tex 在 \documentclass 底下
-% 定義完變數之後呼叫一次。
+% \ntufontsetup{engfont = ..., engfontoptions = ..., cjkfont = ..., cjkfontoptions = ...}
 %
-% 為什麼要多這一行、而不是由類別自己找時機：那四個變數是 main.tex 在
-% \documentclass 之後才定義的，類別載入時還看不到，所以設定字型的時機一定得晚
-% 於變數。由 main.tex 明講「變數設完了」最直接，不必掛任何鉤子。
-%
-% \providecommand 只在使用者把某個變數整個刪掉時才補上預設值。
-%
-% \ntusetfonts reads the four variables above and sets the fonts. main.tex calls
-% it once, after defining them below \documentclass.
-%
-% Why the extra line rather than the class picking its own moment: the variables
-% are defined by main.tex after \documentclass and are not visible while the
-% class loads, so the fonts cannot be set before them. Having main.tex say "the
-% variables are set" is the plainest way to order the two, and hooks nothing.
-%
-% The \providecommand lines only step in for a variable the user deleted outright.
-\newcommand{\ntusetfonts}{%
-  \providecommand{\ntuengfont}{Tinos-Regular.ttf}%
-  \providecommand{\ntuengfontoptions}{%
-    BoldFont = Tinos-Bold.ttf,
-    ItalicFont = Tinos-Italic.ttf,
-    BoldItalicFont = Tinos-BoldItalic.ttf}%
-  \providecommand{\ntucjkfont}{TW-Kai-98_1.ttf}%
-  \providecommand{\ntucjkfontoptions}{}%
-  \ntu@font@resolve{\string\ntuengfont}{\ntu@path@font}{\ntuengfont}%
-  \ntu@font@set{\setmainfont}{\ntuengfontoptions}%
-  % 中文的等寬字型設成同一個字型，中文才不會在 \texttt 與程式碼區塊裡掉字。
-  % The monospaced CJK face is the same font, so CJK inside \texttt and code
-  % blocks does not fall back to a face that cannot set it.
-  \ntu@font@resolve{\string\ntucjkfont}{\ntu@path@cjkfont}{\ntucjkfont}%
-  \ntu@font@set{\setCJKmainfont}{\ntucjkfontoptions}%
-  \ntu@font@set{\setCJKmonofont}{\ntucjkfontoptions}%
+% Sets the fonts as it reads them, so main.tex calls it below \documentclass.
+% The CJK monospaced face is the CJK face, so CJK inside \texttt and code blocks
+% does not fall back to one that cannot set it.
+\newcommand{\ntufontsetup}[1]{%
+  \def\ntu@engfont{}%
+  \def\ntu@engfontoptions{}%
+  \def\ntu@cjkfont{}%
+  \def\ntu@cjkfontoptions{}%
+  \setkeys{ntu@font}{#1}%
+  \ntu@font@set{engfont}{\setmainfont}{\ntu@path@font}{\ntu@engfont}{\ntu@engfontoptions}%
+  \ntu@font@set{cjkfont}{\setCJKmainfont}{\ntu@path@cjkfont}{\ntu@cjkfont}{\ntu@cjkfontoptions}%
+  \ntu@font@set{cjkfont}{\setCJKmonofont}{\ntu@path@cjkfont}{\ntu@cjkfont}{\ntu@cjkfontoptions}%
 }
 
 % [顏色設定]

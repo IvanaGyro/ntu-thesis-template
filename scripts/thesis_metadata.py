@@ -119,37 +119,19 @@ def key_values(block: str) -> dict[str, str]:
     return values
 
 
-def parse_ntusetup(path: Path) -> dict[str, str]:
-    """Every key of the `\\ntusetup` block, as plain text."""
+def parse_keyval_command(path: Path, command: str) -> dict[str, str]:
+    """Every key of the `\\<command>{...}` block in the file, as plain text."""
     text = strip_comments(path.read_text(encoding="utf-8"))
-    marker = re.search(r"\\ntusetup\s*\{", text)
+    marker = re.search(rf"\\{command}\s*\{{", text)
     if not marker:
-        raise CollectionError(f"Could not find \\ntusetup in {path}")
+        raise CollectionError(f"Could not find \\{command} in {path}")
     block, _ = braced_group(text, marker.end() - 1)
     return {key: latex_to_plain(value).strip() for key, value in key_values(block).items()}
 
 
-# A \newcommand of a plain macro: the name, up to the brace its body opens.
-DEFINITION = re.compile(r"\\(?:re)?newcommand\s*\{?\s*\\([A-Za-z@]+)\s*\}?\s*")
-
-
-def newcommands(path: Path) -> dict[str, str]:
-    """Every `\\newcommand` of a plain macro in the file, as plain text.
-
-    main.tex names its fonts this way, in variables under `\\documentclass`. A
-    definition that takes arguments is skipped -- what follows the name is then
-    a bracket, not the body -- and a later definition wins, as it would when the
-    file runs.
-    """
-    text = strip_comments(path.read_text(encoding="utf-8"))
-    values: dict[str, str] = {}
-    for match in DEFINITION.finditer(text):
-        try:
-            body, _ = braced_group(text, match.end())
-        except CollectionError:
-            continue
-        values[match.group(1)] = latex_to_plain(body).strip()
-    return values
+def parse_ntusetup(path: Path) -> dict[str, str]:
+    """Every key of the `\\ntusetup` block, as plain text."""
+    return parse_keyval_command(path, "ntusetup")
 
 
 def class_options(path: Path) -> dict[str, str]:
