@@ -165,8 +165,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - `scripts/make_spine.py` resolves `cjkfont` exactly as `ntuthesis.cls` does and
   has to keep doing so: same probe order, same default (`TW-Kai-98_1.ttf`).
 - When `cjkfont` names an installed family, the spine matches it against
-  `font_names`, which must keep the face's *localized* name records: a font
-  answers to both (TW-Kai is also 全字庫正楷體) and either may be written.
+  `font_names`, which must keep the face's *localized* name records and its
+  typographic family (ID 16): a font answers to all of them — TW-Kai is also
+  全字庫正楷體, and a face in a family of more than four styles carries its real
+  family only in ID 16 — and any of them may be written.
   `reduced` must likewise keep word characters of every script — reducing to
   ASCII leaves every CJK name empty, and empty compares equal to empty, so
   標楷體 would match 新細明體.

@@ -163,11 +163,16 @@ From 國立臺灣大學碩、博士學位論文格式規範 (112學年度第1學
 > Roman 打字，中文撰寫以1.5間距，英文則以雙行間距，本文留白上3公分、下2公分、
 > 左右各3公分，字體顏色為黑色
 
-The template sets the layout for you: A4 paper, a 12 pt body in 楷書 and Times
-New Roman, the 上3 下2 左右3 公分 margins, black body text, the cover at
-18/16/14 pt centred, and the order of the front matter. Citation labels, URLs,
-and the DOI stamp are colored by default; `grayprint = true` (below) paints
-those black as well.
+The template sets the layout for you: A4 paper, a 12 pt body, the 上3 下2 左右3
+公分 margins, black body text, the cover at 18/16/14 pt centred, and the order
+of the front matter. Citation labels, URLs, and the DOI stamp are colored by
+default; `grayprint = true` (below) paints those black as well.
+
+The English font is the one thing a fresh clone does **not** satisfy on its own.
+Chinese is set in 楷書, as the rules ask, but `engfont` defaults to the bundled
+Tinos — metrically identical to Times New Roman, and not the font the rules
+name. Set `engfont = {Times New Roman}` on a machine that has it to meet the
+rule as written; see [Fonts](#fonts).
 
 The line spacing follows the `language` option: 1.5 for a thesis written in
 Chinese, double for one written in English, which is what the rules ask of each.

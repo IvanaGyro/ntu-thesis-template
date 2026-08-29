@@ -287,8 +287,13 @@ class FontFile:
         return TTFont(self.path, fontNumber=self.index, **kwargs)
 
 
-# The name table entries a face answers to: 1 family, 4 full, 6 PostScript.
-FONT_NAME_IDS = (1, 4, 6)
+# The name table entries a face answers to: 1 family, 4 full, 6 PostScript, and
+# 16 the typographic family. A family with more than the four styles the legacy
+# grouping allows splits itself across several ID 1 names -- STIX Two Text
+# Medium is its own ID 1 family, with ID 16 saying it is really STIX Two Text --
+# and the platform resolves the typographic name, so it has to be matched too.
+# ID 1 stays first: font_names(...)[0] is the name the spine letters with.
+FONT_NAME_IDS = (1, 4, 6, 16)
 
 
 def font_names(font: FontFile) -> tuple[str, ...]:
