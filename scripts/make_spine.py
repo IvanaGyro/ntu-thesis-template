@@ -153,6 +153,7 @@ from thesis_metadata import (  # noqa: E402
     CollectionError,
     class_options,
     collapse_spaces,
+    newcommands,
     parse_ntusetup,
 )
 
@@ -349,16 +350,14 @@ def matched_font(family: str) -> FontFile | None:
     return FontFile(Path(path), int(index) if index.isdigit() else 0)
 
 
-# 中文字型的來源，抄自 ntuthesis.cls 的解析順序：先當成 fonts/chinese/ 裡的檔案，
-# 再當成系統安裝的字族名稱。改動任何一邊都要同時改另一邊。
+# 中文字型的來源，抄自 ntuthesis.cls 的解析順序：先當成 fonts/chinese/ 裡的檔案
+# （副檔名可寫可不寫），再當成系統安裝的字族名稱。改動任何一邊都要同時改另一邊。
 # Where the class loads its Chinese face from, in the order the class tries it:
-# the file cjkfont names in fonts/chinese/, that name with an extension (with or
-# without -Regular), then a font family installed on the machine. The two sides
-# have to be changed together.
+# the file \ntucjkfont names in fonts/chinese/, that name with an extension, then
+# a font family installed on the machine. The two sides have to change together.
 CJK_DIRECTORY = "fonts/chinese"
 CJK_EXTENSIONS = (".ttf", ".otf", ".ttc")
-CJK_UPRIGHT = ("", "-Regular")
-# ntuthesis.cls's own default for cjkfont, used when main.tex names no font.
+# ntuthesis.cls's own default, used when main.tex names no font.
 CJK_DEFAULT = "TW-Kai-98_1.ttf"
 
 
@@ -366,23 +365,16 @@ def shipped_font(directory: Path, name: str) -> Path | None:
     """The file in fonts/chinese/ that `name` picks out, or None for a family."""
     if (directory / name).is_file():
         return directory / name
-    for suffix in CJK_UPRIGHT:
-        for extension in CJK_EXTENSIONS:
-            candidate = directory / f"{name}{suffix}{extension}"
-            if candidate.is_file():
-                return candidate
+    for extension in CJK_EXTENSIONS:
+        candidate = directory / f"{name}{extension}"
+        if candidate.is_file():
+            return candidate
     return None
 
 
 def cjk_font_name(root: Path) -> str:
-    """What main.tex sets cjkfont to, or the class's default when it says nothing."""
-    try:
-        setup = parse_ntusetup(root / "main.tex")
-    except CollectionError:
-        # A main.tex with no \ntusetup block at all still builds, on the
-        # defaults; the spine should not be the one thing that stops working.
-        setup = {}
-    return setup.get("cjkfont", CJK_DEFAULT)
+    """What main.tex sets \ntucjkfont to, or the class default when it says nothing."""
+    return newcommands(root / "main.tex").get("ntucjkfont", CJK_DEFAULT)
 
 
 def locate_font(root: Path) -> FontFile:
@@ -395,7 +387,7 @@ def locate_font(root: Path) -> FontFile:
     if candidate and any(same_font(name, found) for found in font_names(candidate)):
         return candidate
     raise CollectionError(
-        f"main.tex sets cjkfont = {name}, which is neither a file in "
+        f"main.tex sets \\ntucjkfont = {name}, which is neither a file in "
         f"{CJK_DIRECTORY}/ nor a font family installed on this machine. Install "
         "it, or name a Chinese face that ships with the template. See "
         "fonts/README.md."
@@ -433,7 +425,7 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[byt
     if level & FSTYPE_RESTRICTED:
         raise CollectionError(
             f"{font.name} forbids embedding, so it cannot travel inside the spine "
-            "files. Set cjkfont to a Chinese face that ships with the template."
+            "files. Set \\ntucjkfont to a Chinese face that ships with the template."
         )
     if rights & FSTYPE_BITMAP_ONLY:
         # A spine is lettered at whatever size it takes, and what would travel
@@ -441,7 +433,7 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[byt
         # to go cannot go, whatever else its rights permit.
         raise CollectionError(
             f"{font.name} allows only its bitmaps to be embedded, not its outlines, "
-            "which is what the spine files carry. Set cjkfont to a Chinese face "
+            "which is what the spine files carry. Set \\ntucjkfont to a Chinese face "
             "that ships with the template."
         )
 

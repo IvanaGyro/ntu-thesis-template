@@ -120,23 +120,36 @@ def key_values(block: str) -> dict[str, str]:
 
 
 def parse_ntusetup(path: Path) -> dict[str, str]:
-    """Every key of every `\\ntusetup` block in the file, as plain text.
+    """Every key of the `\\ntusetup` block, as plain text."""
+    text = strip_comments(path.read_text(encoding="utf-8"))
+    marker = re.search(r"\\ntusetup\s*\{", text)
+    if not marker:
+        raise CollectionError(f"Could not find \\ntusetup in {path}")
+    block, _ = braced_group(text, marker.end() - 1)
+    return {key: latex_to_plain(value).strip() for key, value in key_values(block).items()}
 
-    A file may hold more than one block -- main.tex keeps the fonts in one and
-    the verification letter in another -- and the class reads them all, so this
-    does too. A later block wins, exactly as it would when the class runs.
+
+# A \newcommand of a plain macro: the name, up to the brace its body opens.
+DEFINITION = re.compile(r"\\(?:re)?newcommand\s*\{?\s*\\([A-Za-z@]+)\s*\}?\s*")
+
+
+def newcommands(path: Path) -> dict[str, str]:
+    """Every `\\newcommand` of a plain macro in the file, as plain text.
+
+    main.tex names its fonts this way, in variables under `\\documentclass`. A
+    definition that takes arguments is skipped -- what follows the name is then
+    a bracket, not the body -- and a later definition wins, as it would when the
+    file runs.
     """
     text = strip_comments(path.read_text(encoding="utf-8"))
-    blocks = re.compile(r"\\ntusetup\s*\{")
     values: dict[str, str] = {}
-    cursor, seen = 0, False
-    while marker := blocks.search(text, cursor):
-        seen = True
-        block, cursor = braced_group(text, marker.end() - 1)
-        values.update(key_values(block))
-    if not seen:
-        raise CollectionError(f"Could not find \\ntusetup in {path}")
-    return {key: latex_to_plain(value).strip() for key, value in values.items()}
+    for match in DEFINITION.finditer(text):
+        try:
+            body, _ = braced_group(text, match.end())
+        except CollectionError:
+            continue
+        values[match.group(1)] = latex_to_plain(body).strip()
+    return values
 
 
 def class_options(path: Path) -> dict[str, str]:

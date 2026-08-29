@@ -27,10 +27,10 @@ __pycache__/
 /main-spine*.odt
 /main-spine*.pdf
 
-# Proprietary fonts a user drops in for engfont/cjkfont belong to them, not to
+# Proprietary fonts a user drops in for the font variables belong to them, not to
 # this repository — see fonts/README.md. The freely licensed fonts the template
 # ships (Tinos, 全字庫 TW-Kai and TW-Sung) are re-included below.
-# Every extension engfont/cjkfont can load, not only .ttf: a proprietary face is
+# Every extension the font variables can load, not only .ttf: a proprietary face is
 # as likely to arrive as an .otf or a .ttc, and dropping one in is what
 # fonts/README.md tells the user to do.
 /fonts/english/*.ttf

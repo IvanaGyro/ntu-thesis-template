@@ -28,26 +28,44 @@
 % 中英文字型
 % The Latin and CJK fonts
 %
-% 兩者都可以填字型檔名或字族名稱，依序尋找，先找到的先用：
-%   1. fonts/english/（中文為 fonts/chinese/）裡的檔名，例如 TW-Kai-98_1.ttf
-%   2. 同目錄的字型基本名稱，例如 Tinos，會自動接上 Tinos-Bold 等粗體與斜體
-%   3. 作業系統（含 Overleaf）已安裝的字族名稱，例如 Times New Roman
-% 三種都找不到就報錯，不會默默換成看起來像、但不是規範指定的字型。
+% 每個字型變數可以填兩種東西，依序尋找，先找到的先用：
+%   1. fonts/english/（中文為 fonts/chinese/）裡的字型檔，例如
+%      Tinos-Regular.ttf，副檔名可寫可不寫
+%   2. 作業系統（含 Overleaf）已安裝的字族名稱，例如 Times New Roman
+% 兩種都找不到就報錯，不會默默換成看起來像、但不是規範指定的字型。
+%
+% 粗體與斜體：填字族名稱時由系統的字型管理員自動配對，options 留空即可；填檔名
+% 時一個檔案就是一個字面，要自己把粗體與斜體的檔名寫進 options。
 % 詳見 fonts/README.md。
 %
-% Either one takes a font file in fonts/ or an installed family name, tried in
-% that order: an exact filename, a base name whose -Bold and -Italic siblings
-% are picked up automatically, then a family installed on the system, Overleaf's
-% image included. Nothing matching is an error, never a silent substitution.
-% See fonts/README.md.
+% Each font variable takes either a font file in fonts/english/ (fonts/chinese/
+% for CJK), with or without its extension, or a font family installed on the
+% system, Overleaf's image included; the file is looked for first. Neither
+% matching is an error, never a silent substitution.
+%
+% Bold and italic: a family name brings its own, paired up by the platform's
+% font manager, so the options can stay empty; a filename is one face only, so
+% name the bold and italic files in the options yourself. See fonts/README.md.
 % --------------------------------------------------
-\ntusetup{
-  % 隨附的 Tinos，字寬與 Times New Roman 相同，不需安裝任何字型。
-  % 機器上裝有規範指定的 Times New Roman 就改成 {Times New Roman}。
-  engfont = {Tinos},
-  % 隨附的全字庫正楷體（規範以楷書為主）。{TW-Sung-98_1.ttf} 為全字庫正宋體。
-  cjkfont = {TW-Kai-98_1.ttf},
+
+% 隨附的 Tinos，字寬與 Times New Roman 相同，不需安裝任何字型。
+% 機器上裝有規範指定的 Times New Roman 就改成 {Times New Roman}，
+% 並把 \ntuengfontoptions 清空（字族名稱會自己帶粗體與斜體）。
+\newcommand{\ntuengfont}{Tinos-Regular.ttf}
+\newcommand{\ntuengfontoptions}{
+  BoldFont       = Tinos-Bold.ttf,
+  ItalicFont     = Tinos-Italic.ttf,
+  BoldItalicFont = Tinos-BoldItalic.ttf,
 }
+
+% 隨附的全字庫正楷體（規範以楷書為主）。{TW-Sung-98_1.ttf} 為全字庫正宋體。
+% 兩個字型檔都只有一個字重，因此 options 留空。
+\newcommand{\ntucjkfont}{TW-Kai-98_1.ttf}
+\newcommand{\ntucjkfontoptions}{}
+
+% 變數設定完，套用到文件上。
+% Apply the four variables above.
+\ntusetfonts
 
 % --------------------------------------------------
 % 審定書檔案路徑（verification = auto 或 file 時使用）

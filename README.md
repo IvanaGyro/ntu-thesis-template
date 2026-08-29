@@ -56,7 +56,7 @@ The split is deliberate: **`main.tex` holds every style and layout setting,
 | Step | File | What goes in it |
 | --- | --- | --- |
 | 1 | `ntusetup.tex` | Title, author, student ID, advisor, department, keywords, DOI, email, ORCID, and the oral examination committee. The only place personal data belongs. |
-| 2 | `main.tex` | Class options, the two fonts, the verification-letter path, package loading, and the bibliography style. |
+| 2 | `main.tex` | Class options, the font variables, the verification-letter path, package loading, and the bibliography style. |
 | 3 | `front/abstract.tex` | Chinese and English abstracts, three pages each at most. |
 | 4 | `front/acknowledgement.tex` | 謝辭, optional, one page at most. |
 | 5 | `front/denotation.tex` | Symbol list. Ships one example per broad field — keep what fits, delete the rest. |
@@ -113,32 +113,47 @@ the file appearing, but not disappearing, so switching back needs
 
 ## Fonts
 
-Both fonts are named in `main.tex`:
+The fonts are four variables in `main.tex`, just under `\documentclass`:
 
 ```latex
-\ntusetup{
-  engfont = {Tinos},
-  cjkfont = {TW-Kai-98_1.ttf},
+\newcommand{\ntuengfont}{Tinos-Regular.ttf}
+\newcommand{\ntuengfontoptions}{
+  BoldFont       = Tinos-Bold.ttf,
+  ItalicFont     = Tinos-Italic.ttf,
+  BoldItalicFont = Tinos-BoldItalic.ttf,
 }
+\newcommand{\ntucjkfont}{TW-Kai-98_1.ttf}
+\newcommand{\ntucjkfontoptions}{}
+\ntusetfonts
 ```
 
-Either one takes a font file in `fonts/` or a font family installed on the
+`\ntusetfonts` applies them; it has to come after the variables, which is why it
+is a line of its own rather than something the class does by itself.
+
+Each font variable takes a file in `fonts/` or a family installed on the
 machine, looked for in that order:
 
 | What you write | Where it is looked for |
 | --- | --- |
-| `TW-Kai-98_1.ttf` | that exact file, in `fonts/chinese/` for `cjkfont` and `fonts/english/` for `engfont` |
-| `Tinos` | `Tinos.ttf`, `.otf`, or `.ttc` in the same directory, with or without a `-Regular` suffix. Any `Tinos-Bold`, `Tinos-Italic`, and `Tinos-BoldItalic` beside it become the bold and italic faces. |
+| `TW-Kai-98_1.ttf` | that exact file, in `fonts/chinese/` for `\ntucjkfont` and `fonts/english/` for `\ntuengfont` |
+| `TW-Kai-98_1` | the same file, extension filled in — `.ttf`, `.otf`, or `.ttc` |
 | `Times New Roman` | a font family installed on the system, Overleaf's image included |
+
+**Bold and italic come from different places in the two cases.** A family name
+is resolved by the operating system's font manager, which knows every weight and
+slant the family has, so the options variable can stay empty. A filename is one
+face and nothing else — name the other files in the options variable yourself,
+as the shipped `\ntuengfontoptions` does, or `\textbf` and `\textit` fall back to
+the upright with a `Font shape ... undefined` warning.
 
 Both defaults are fonts this repository ships, so a fresh clone compiles
 anywhere with nothing installed, Overleaf included: **Tinos** for English and
-**全字庫正楷體 TW-Kai** for Chinese. `cjkfont = {TW-Sung-98_1.ttf}` switches the
-Chinese face to **全字庫正宋體 TW-Sung**.
+**全字庫正楷體 TW-Kai** for Chinese. `\ntucjkfont` set to `TW-Sung-98_1.ttf`
+switches the Chinese face to **全字庫正宋體 TW-Sung**.
 
 NTU's rules name **Times New Roman**, and Tinos is a metric-compatible clone of
 it, not the font itself — same widths, so line breaks and page counts are
-identical, but a different name in the PDF. Write `engfont = {Times New Roman}`
+identical, but a different name in the PDF. Write `\ntuengfont` as `Times New Roman`
 on a machine that has it (Windows and macOS both do; it is proprietary, so it is
 not shipped here), and check with your department before submitting if you keep
 Tinos.
@@ -169,9 +184,9 @@ of the front matter. Citation labels, URLs, and the DOI stamp are colored by
 default; `grayprint = true` (below) paints those black as well.
 
 The English font is the one thing a fresh clone does **not** satisfy on its own.
-Chinese is set in 楷書, as the rules ask, but `engfont` defaults to the bundled
+Chinese is set in 楷書, as the rules ask, but `\ntuengfont` defaults to the bundled
 Tinos — metrically identical to Times New Roman, and not the font the rules
-name. Set `engfont = {Times New Roman}` on a machine that has it to meet the
+name. Set `\ntuengfont` to `Times New Roman` on a machine that has it to meet the
 rule as written; see [Fonts](#fonts).
 
 The line spacing follows the `language` option: 1.5 for a thesis written in

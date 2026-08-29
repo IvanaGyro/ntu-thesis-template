@@ -29,38 +29,58 @@ font in a PDF is normal use, and both licences permit it.
 
 ## Naming the two fonts
 
-`main.tex` names one Latin face and one CJK face:
+`main.tex` names one Latin face and one CJK face, in four variables under
+`\documentclass`, then applies them with `\ntusetfonts`:
 
 ```latex
-\ntusetup{
-  engfont = {Tinos},             % fonts/english/, then the system
-  cjkfont = {TW-Kai-98_1.ttf},   % fonts/chinese/, then the system
+\newcommand{\ntuengfont}{Tinos-Regular.ttf}   % english/, then the system
+\newcommand{\ntuengfontoptions}{
+  BoldFont       = Tinos-Bold.ttf,
+  ItalicFont     = Tinos-Italic.ttf,
+  BoldItalicFont = Tinos-BoldItalic.ttf,
+}
+\newcommand{\ntucjkfont}{TW-Kai-98_1.ttf}     % chinese/, then the system
+\newcommand{\ntucjkfontoptions}{}
+\ntusetfonts
+```
+
+A font variable is looked for in two places, and the first hit wins:
+
+1. **A file** in `english/` (for `\ntuengfont`) or `chinese/` (for
+   `\ntucjkfont`), named exactly or with the `.ttf`, `.otf`, or `.ttc`
+   extension left off.
+2. **A font family installed on the machine**, Overleaf's image included:
+   `Times New Roman`, `BiauKai`, `AR PL KaitiM Big5`.
+
+The options variable is passed to `fontspec` untouched, so anything `fontspec`
+accepts can go in it.
+
+**Bold and italic depend on which of the two you used.** A family name is
+resolved by the operating system's font manager, which knows every weight and
+slant that family has, and `fontspec` pairs them up on its own — leave the
+options empty. A font file is one face and nothing else, and nothing can guess
+which other files sit beside it, so name them yourself:
+
+```latex
+\newcommand{\ntuengfontoptions}{
+  BoldFont       = Tinos-Bold.ttf,
+  ItalicFont     = Tinos-Italic.ttf,
+  BoldItalicFont = Tinos-BoldItalic.ttf,
 }
 ```
 
-Each value is looked for in three places, in order, and the first hit wins:
-
-1. **The exact file** of that name in `english/` (for `engfont`) or `chinese/`
-   (for `cjkfont`) — `cjkfont = {TW-Kai-98_1.ttf}` loads that one file and
-   nothing else.
-2. **A base name** in the same directory: `engfont = {Tinos}` matches
-   `Tinos.ttf`, `.otf`, or `.ttc`, with or without a `-Regular` suffix, and
-   picks up `Tinos-Bold`, `Tinos-Italic`, and `Tinos-BoldItalic` beside it as
-   the bold and italic faces. This is the form to use for a family with several
-   styles; naming one file directly gets you that file alone.
-3. **A font family installed on the machine**, Overleaf's image included:
-   `engfont = {Times New Roman}`, `cjkfont = {BiauKai}`,
-   `cjkfont = {AR PL KaitiM Big5}`.
+Leaving them out still compiles; `\textbf` and `\textit` just fall back to the
+upright, and LaTeX says so with `Font shape ... undefined`.
 
 The combinations worth knowing:
 
-| What you want | What to write |
-| --- | --- |
-| The default: nothing installed, everything bundled | `engfont = {Tinos}`, `cjkfont = {TW-Kai-98_1.ttf}` |
-| The format rules exactly, fonts from your system | `engfont = {Times New Roman}`, `cjkfont = {BiauKai}` |
-| The rules' English face, bundled Chinese | `engfont = {Times New Roman}`, `cjkfont = {TW-Kai-98_1.ttf}` |
-| Your own files dropped in here | `engfont = {Times New Roman}`, `cjkfont = {BiauKai}`, with the files named below |
-| Overleaf's built-in Chinese face | `cjkfont = {AR PL KaitiM Big5}` |
+| What you want | `\ntuengfont` | `\ntucjkfont` |
+| --- | --- | --- |
+| The default: nothing installed, everything bundled | `Tinos-Regular.ttf` | `TW-Kai-98_1.ttf` |
+| The format rules exactly, fonts from your system | `Times New Roman` | `BiauKai` |
+| The rules' English face, bundled Chinese | `Times New Roman` | `TW-Kai-98_1.ttf` |
+| Your own files dropped in here | `Times New Roman.ttf` | `BiauKai.ttf` |
+| Overleaf's built-in Chinese face | — | `AR PL KaitiM Big5` |
 
 Nothing sets a Latin sans or monospaced face; NTU's rules name only the body
 face. Add `\setsansfont` and `\setmonofont` to `main.tex` if you want them.
@@ -82,10 +102,10 @@ the rules do not name. Rather than let that pass silently, the class checks with
 `\IfFontExistsTF`, which is not fooled by the substitution, and stops with a
 message listing everything it tried.
 
-The default `engfont = {Tinos}` is a deliberate trade: the template compiles on
+The default `\ntuengfont` of `Tinos-Regular.ttf` is a deliberate trade: the template compiles on
 a fresh clone anywhere, at the cost of naming a metric-compatible clone rather
 than the Times New Roman the rules ask for. Windows and macOS ship Times New
-Roman, so write `engfont = {Times New Roman}` there. Most Linux distributions do
+Roman, so write `Times New Roman` there. Most Linux distributions do
 not; install it yourself, or keep Tinos and check with your department before
 submitting.
 
@@ -96,27 +116,27 @@ files here and keep the names in `main.tex` matching:
 
 ```
 fonts/english/Times New Roman.ttf
-fonts/english/Times New Roman-Bold.ttf
-fonts/english/Times New Roman-Italic.ttf
-fonts/english/Times New Roman-BoldItalic.ttf
+fonts/english/Times New Roman Bold.ttf
+fonts/english/Times New Roman Italic.ttf
 fonts/chinese/BiauKai.ttf
-fonts/chinese/BiauKai-Bold.ttf      (optional; becomes the CJK bold face)
 ```
 
 ```latex
-\ntusetup{
-  engfont = {Times New Roman},
-  cjkfont = {BiauKai},
+\newcommand{\ntuengfont}{Times New Roman.ttf}
+\newcommand{\ntuengfontoptions}{
+  BoldFont   = Times New Roman Bold.ttf,
+  ItalicFont = Times New Roman Italic.ttf,
 }
+\newcommand{\ntucjkfont}{BiauKai.ttf}
+\newcommand{\ntucjkfontoptions}{}
+\ntusetfonts
 ```
 
-The suffixes are what matter: the upright face is the bare name (or `-Regular`),
-and `-Bold`, `-Italic`, and `-BoldItalic` beside it are attached automatically.
-A file under any other name is simply not found, so rename rather than hope —
-`Kaiti-Black.ttf`, which earlier versions of this template used as the CJK bold
-face, has to become `BiauKai-Bold.ttf` to be picked up. With the files in place,
-these names resolve here and never reach the system, so the same `main.tex`
-builds on a machine where the fonts are installed and on one where they are not.
+The filenames are yours to choose — whatever you copied them as, write that. The
+variables are the only place they are named, so nothing has to be renamed to
+match a pattern. With the files in place these names resolve here and never
+reach the system, so the same `main.tex` builds on a machine where the fonts are
+installed and on one where they are not.
 
 Where to get them:
 
@@ -131,6 +151,8 @@ to you, not to this repository, so **do not commit them**. `.gitignore` covers
 `fonts/**/*.ttf` with an exception only for the freely licensed files listed
 above, so an accidental `git add -A` cannot pick them up.
 
-If the fonts are installed system-wide rather than copied here, the same
-`engfont = {Times New Roman}`, `cjkfont = {BiauKai}` finds them: nothing matches
-in `fonts/`, so the lookup falls through to the system's own font manager.
+If the fonts are installed system-wide rather than copied here, write the family
+names instead — `\ntuengfont` as `Times New Roman`, `\ntucjkfont` as `BiauKai`,
+with both options variables empty. Nothing matches in `fonts/`, the lookup falls
+through to the system's font manager, and that manager supplies the bold and
+italic faces itself.

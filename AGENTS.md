@@ -41,7 +41,7 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - `ntusetup.tex` — personal data only: the `\ntusetup` metadata block and the
   `\ntucommittee` entries. Keep style out of it; that split is the point.
 - `ntuthesis.cls` — the class. Cover, verification letter, watermark, DOI
-  stamp, front-matter environments, the `engfont`/`cjkfont` lookup.
+  stamp, front-matter environments, the `\ntusetfonts` font lookup.
 - `environments.tex` — the `wherelist` environment.
 - `front/` — abstract, acknowledgement, denotation, and the two official
   verification-letter PDFs (blank master's and doctoral forms from 教務處).
@@ -71,7 +71,7 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   bibliography unnoticed.
 - Never commit a real signed verification letter, a real DOI, a real student
   ID, or a real acknowledgement.
-- Never commit proprietary font files. Every extension `engfont`/`cjkfont` can
+- Never commit proprietary font files. Every extension the font variables can
   load — `.ttf`, `.otf`, `.ttc` — is gitignored under `fonts/`, except for the
   freely licensed faces the template ships (Tinos, 全字庫 TW-Kai/TW-Sung).
   Widening the resolver to another extension means widening `.gitignore` too.
@@ -83,17 +83,19 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   with the work, so `LICENSE` must keep both copyright lines.
 - Comments in `.tex` files are bilingual where they explain a NTU-specific rule,
   Chinese first. Comments in `.py` files are English.
-- Any change to a class option, to how `engfont`/`cjkfont` resolve, or to the
+- Any change to a class option, to how the font variables resolve, or to the
   inclusion order has to be reflected in `README.md`'s edit-order table.
 
 ## Constraints worth remembering
 
 - `front/abstract.tex` calls `\zhlipsum[1][name=trad]`; the package default is
   simplified Chinese, which a traditional-only CJK face cannot set.
-- `engfont` and `cjkfont` each take a font file in `fonts/` or an installed
+- `\ntuengfont`/`\ntucjkfont` each take a font file in `fonts/` or an installed
   family name, and `\ntu@font@resolve` tries them in that order: the exact file
-  named, then that name with `.ttf`/`.otf`/`.ttc` (with or without `-Regular`,
-  attaching any `-Bold`/`-Italic`/`-BoldItalic` beside it), then the system.
+  named, that name with `.ttf`/`.otf`/`.ttc`, then the system. It never guesses
+  a `-Bold` or `-Italic` sibling — a family name brings its own styles from the
+  platform font manager, and a file is one face, so the user names the rest in
+  `\ntuengfontoptions`/`\ntucjkfontoptions`, passed to fontspec untouched.
 - The family branch must keep checking `\IfFontExistsTF` before loading.
   fontconfig answers a request for a missing family with a metric-compatible
   substitute (`fc-match "Times New Roman"` often returns Tinos), so without the
@@ -105,10 +107,13 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   `kpsewhich Tinos-Regular.ttf` finds the file while `\setmainfont{Tinos}` does
   not. Listing the directory in a `fonts.conf` and running `fc-cache` does work,
   but only on Linux and never on Overleaf.
-- `engfont`/`cjkfont` are `\ntusetup` keys, not class options: `\documentclass`
-  runs its option list through `\zap@space`, which turns
-  `engfont = {Times New Roman}` into `TimesNewRoman`. Their lookup therefore
-  waits for `\AtEndPreamble`, once main.tex's `\ntusetup` has run.
+- The four font variables are plain `\newcommand`s in main.tex, not class
+  options and not `\ntusetup` keys: `\documentclass` runs its option list through
+  `\zap@space`, which would turn a value of `{Times New Roman}` into
+  `TimesNewRoman`, and the font the rules name has spaces in it. Because they are defined after
+  `\documentclass`, the class cannot read them while loading, so main.tex calls
+  `\ntusetfonts` once below them. That call is the ordering — no hook, no
+  `\AtBeginDocument`, no extra package.
 - `fonts/` is ~72 MB, almost all of it the two 全字庫 TTFs. Adding the `Ext-B`
   or `Plus` variants would roughly double that for characters a thesis will not
   use.
@@ -160,11 +165,11 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   the same peak ink.
 - `scripts/thesis_metadata.py` is the one reader of `main.tex` and
   `ntusetup.tex`; the spine and the TDR filler both go through it, so a change
-  to how a value is written is a change in one place. `parse_ntusetup` merges
-  every `\ntusetup` block in a file, because main.tex now has two.
-- `scripts/make_spine.py` resolves `cjkfont` exactly as `ntuthesis.cls` does and
-  has to keep doing so: same probe order, same default (`TW-Kai-98_1.ttf`).
-- When `cjkfont` names an installed family, the spine matches it against
+  to how a value is written is a change in one place. `newcommands` reads the
+  font variables out of main.tex the way `parse_ntusetup` reads `\ntusetup`.
+- `scripts/make_spine.py` resolves `\ntucjkfont` exactly as `ntuthesis.cls` does
+  and has to keep doing so: same probe order, same default (`TW-Kai-98_1.ttf`).
+- When `\ntucjkfont` names an installed family, the spine matches it against
   `font_names`, which must keep the face's *localized* name records and its
   typographic family (ID 16): a font answers to all of them — TW-Kai is also
   全字庫正楷體, and a face in a family of more than four styles carries its real
