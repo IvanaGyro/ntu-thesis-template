@@ -128,26 +128,22 @@ the file appearing, but not disappearing, so switching back needs
 }
 ```
 
-`engfont` takes a file in `fonts/english/`, written with its extension, or the
-name of a font family installed on the system — Overleaf's image included. The
-file is looked for first. `cjkfont` is the same for `fonts/chinese/`. Neither
-matching is an error; nothing is substituted quietly.
+`engfont` takes a file in `fonts/english/`, extension included, or the name of a
+font family installed on the system — Overleaf's image included. The file is
+looked for first. `cjkfont` is the same for `fonts/chinese/`. Neither matching is
+an error; nothing is substituted quietly.
 
-The options go to `fontspec` untouched. **A family name brings its own bold and
-italic**, so its options can stay empty. **A font file is one face**, so name the
-bold and italic files yourself, as the shipped `engfontoptions` does — leave them
-out and `\textbf` and `\textit` fall back to the upright.
+The options go to `fontspec` untouched. A family name brings its own bold and
+italic, so its options can stay empty; a font file is one face, so name the bold
+and italic files yourself or `\textbf` and `\textit` fall back to the upright.
 
-Both defaults are fonts this repository ships, so a fresh clone compiles
-anywhere with nothing installed: **Tinos** and **全字庫正楷體 TW-Kai**.
-`cjkfont = {TW-Sung-98_1.ttf}` switches Chinese to **全字庫正宋體 TW-Sung**.
-
-NTU's rules name **Times New Roman**, and Tinos is a metric-compatible clone of
-it — same widths, so line breaks and page counts are identical, but a different
-name in the PDF. On a machine that has the real thing, write
-`engfont = {Times New Roman}` with `engfontoptions = {}`. Licences, and where to
-obtain Times New Roman, 標楷體 and 新細明體, are in
-[`fonts/README.md`](fonts/README.md).
+Both defaults ship with the repository, so a fresh clone compiles anywhere with
+nothing installed: **Tinos** and **全字庫正楷體 TW-Kai**
+(`TW-Sung-98_1.ttf` for 正宋體). NTU's rules name **Times New Roman**, and Tinos
+is a metric-compatible clone — same widths, different name in the PDF. On a
+machine that has the real thing, write `engfont = {Times New Roman}` with
+`engfontoptions = {}`. Licences, and where to obtain Times New Roman, 標楷體 and
+新細明體, are in [`fonts/README.md`](fonts/README.md).
 
 ## NTU format compliance
 

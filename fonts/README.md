@@ -57,18 +57,9 @@ Neither matching stops the build with an error. The options are passed to
 **Bold and italic depend on which of the two you used.** A family name is
 resolved by the operating system's font manager, which knows every weight and
 slant that family has, and `fontspec` pairs them up on its own — leave the
-options empty. A font file is one face, so name the others yourself:
-
-```latex
-  engfontoptions = {
-    BoldFont       = Tinos-Bold.ttf,
-    ItalicFont     = Tinos-Italic.ttf,
-    BoldItalicFont = Tinos-BoldItalic.ttf,
-  },
-```
-
-Leaving them out still compiles; `\textbf` and `\textit` fall back to the
-upright, and LaTeX says so with `Font shape ... undefined`.
+options empty. A font file is one face, so name the others yourself, as the
+`engfontoptions` above does. Leaving them out still compiles; `\textbf` and
+`\textit` fall back to the upright, with a `Font shape ... undefined` warning.
 
 The combinations worth knowing:
 

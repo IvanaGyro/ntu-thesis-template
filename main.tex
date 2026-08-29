@@ -27,31 +27,14 @@
 % --------------------------------------------------
 % 中英文字型（Fonts）
 %
-% engfont 填 fonts/english/ 裡的字型檔（要寫副檔名），或作業系統（含 Overleaf）
-% 已安裝的字族名稱；先找檔案，再找系統。cjkfont 同理，對應 fonts/chinese/。
-% 兩種都找不到就報錯。
+% 填 fonts/english/、fonts/chinese/ 裡的字型檔（含副檔名），或系統已安裝的字族
+% 名稱，找不到就報錯。options 原樣交給 fontspec：字族名稱會自動配粗體與斜體，
+% 可留空；檔名則要自己指定。規範用 Times New Roman，有安裝就改填。
 %
-% options 會原封不動交給 fontspec。填字族名稱時粗體與斜體由字型管理員自動配對，
-% options 留空即可；填檔名時一個檔案就是一個字面，粗體與斜體要自己寫進 options，
-% 否則 \textbf 與 \textit 會退回正體。
-%
-% Tinos 的字寬與規範指定的 Times New Roman 相同。機器上裝有 Times New Roman 時
-% 改填 {Times New Roman}，並把 options 清空。
-% 隨附的另一個中文字型是 {TW-Sung-98_1.ttf}（全字庫正宋體）。
-%
-% engfont takes a font file in fonts/english/, written with its extension, or a
-% font family installed on the system, Overleaf's image included; the file is
-% looked for first. cjkfont is the same for fonts/chinese/. Neither matching is
-% an error.
-%
-% The options are passed to fontspec untouched. A family name brings its own
-% bold and italic, so its options can stay empty; a font file is one face, so
-% name the bold and italic files there or \textbf and \textit fall back to the
-% upright.
-%
-% Tinos is metrically identical to the Times New Roman the rules name. Write
-% {Times New Roman} with empty options on a machine that has it. The other
-% shipped CJK face is {TW-Sung-98_1.ttf} (全字庫正宋體).
+% A font file in fonts/english/ or fonts/chinese/, extension included, or an
+% installed font family; neither found is an error. The options go to fontspec:
+% a family name pairs its own bold and italic, a file needs them named. The NTU
+% rules name Times New Roman — write {Times New Roman} if you have it.
 % --------------------------------------------------
 \ntufontsetup{
   engfont = {Tinos-Regular.ttf},
