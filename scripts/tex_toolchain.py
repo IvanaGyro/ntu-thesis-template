@@ -188,7 +188,7 @@ def font_dirs() -> list[Path]:
 
 
 def configure_fontconfig() -> Path:
-    """Expose TinyTeX's bundled fonts to XeTeX without system installation."""
+    """Configure fontconfig for TinyTeX's bundled and platform fonts."""
     dirs = font_dirs()
     FONTCONFIG_DIR.mkdir(parents=True, exist_ok=True)
     cache_dir = FONTCONFIG_DIR / "cache"
@@ -198,7 +198,13 @@ def configure_fontconfig() -> Path:
     include_files: list[Path] = []
     conda_prefix = os.environ.get("CONDA_PREFIX")
     if conda_prefix:
-        include_files.append(Path(conda_prefix) / "etc/fonts/fonts.conf")
+        prefix = Path(conda_prefix)
+        include_files.extend(
+            (
+                prefix / "etc/fonts/fonts.conf",
+                prefix / "Library/etc/fonts/fonts.conf",
+            )
+        )
     include_files.append(Path("/etc/fonts/fonts.conf"))
 
     includes = "\n".join(
