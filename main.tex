@@ -27,22 +27,22 @@
 % --------------------------------------------------
 % 中英文字型（Fonts）
 %
-% 填 fonts/english/、fonts/chinese/ 裡的字型檔（含副檔名），或系統已安裝的字族
-% 名稱，找不到就報錯。options 原樣交給 fontspec：字族名稱會自動配粗體與斜體，
-% 可留空；檔名則要自己指定。規範用 Times New Roman，有安裝就改填。
+% 用 \ntufontsetup 設定中英文字型。engfont 和 cjkfont 可填對應 fonts/ 內的檔案
+% （須含副檔名）或已安裝字族；engfontoptions 和 cjkfontoptions 會原樣交給 fontspec。
 %
-% A font file in fonts/english/ or fonts/chinese/, extension included, or an
-% installed font family; neither found is an error. The options go to fontspec:
-% a family name pairs its own bold and italic, a file needs them named. The NTU
-% rules name Times New Roman — write {Times New Roman} if you have it.
+% Use \ntufontsetup to set both fonts. engfont and cjkfont accept a file in the
+% matching fonts/ directory (extension included) or an installed family;
+% engfontoptions and cjkfontoptions are passed unchanged to fontspec.
+%
+% Example:
+% \ntufontsetup{
+%   engfont = {Times New Roman}, engfontoptions = {},
+%   cjkfont = {TW-Kai-98_1.ttf}, cjkfontoptions = {},
+% }
 % --------------------------------------------------
 \ntufontsetup{
-  engfont = {Tinos-Regular.ttf},
-  engfontoptions = {
-    BoldFont       = Tinos-Bold.ttf,
-    ItalicFont     = Tinos-Italic.ttf,
-    BoldItalicFont = Tinos-BoldItalic.ttf,
-  },
+  engfont = {Times New Roman},
+  engfontoptions = {},
   cjkfont = {TW-Kai-98_1.ttf},
   cjkfontoptions = {},
 }

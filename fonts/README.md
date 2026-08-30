@@ -33,13 +33,9 @@ font in a PDF is normal use, and both licences permit it.
 
 ```latex
 \ntufontsetup{
-  engfont = {Tinos-Regular.ttf},        % english/, then the system
-  engfontoptions = {
-    BoldFont       = Tinos-Bold.ttf,
-    ItalicFont     = Tinos-Italic.ttf,
-    BoldItalicFont = Tinos-BoldItalic.ttf,
-  },
-  cjkfont = {TW-Kai-98_1.ttf},          % chinese/, then the system
+  engfont = {Times New Roman},
+  engfontoptions = {},
+  cjkfont = {TW-Kai-98_1.ttf},
   cjkfontoptions = {},
 }
 ```
@@ -65,9 +61,9 @@ The combinations worth knowing:
 
 | What you want | `engfont` | `cjkfont` |
 | --- | --- | --- |
-| The default: nothing installed, everything bundled | `Tinos-Regular.ttf` | `TW-Kai-98_1.ttf` |
+| The default (including Overleaf) | `Times New Roman` | `TW-Kai-98_1.ttf` |
+| A fully bundled alternative | `Tinos-Regular.ttf` | `TW-Kai-98_1.ttf` |
 | The format rules exactly, fonts from your system | `Times New Roman` | `BiauKai` |
-| The rules' English face, bundled Chinese | `Times New Roman` | `TW-Kai-98_1.ttf` |
 | Your own files dropped in here | `Times New Roman.ttf` | `BiauKai.ttf` |
 | Overleaf's built-in Chinese face | — | `AR PL KaitiM Big5` |
 
@@ -83,12 +79,9 @@ replaced with a look-alike. Run `fc-match "Times New Roman"` and you may well
 see Tinos or Liberation Serif; that substitution is what the error prevents from
 reaching your PDF.
 
-The default `engfont` of `Tinos-Regular.ttf` is a deliberate trade: the template
-compiles on a fresh clone anywhere, at the cost of naming a metric-compatible
-clone rather than the Times New Roman the rules ask for. Windows and macOS ship
-Times New Roman, so write `Times New Roman` there. Most Linux distributions do
-not; install it yourself, or keep Tinos and check with your department before
-submitting.
+The default `engfont` is `Times New Roman`, which Overleaf provides. If your
+local system does not have it, use `Tinos-Regular.ttf` with its style files in
+`engfontoptions` instead.
 
 ## Using the exact fonts NTU names
 

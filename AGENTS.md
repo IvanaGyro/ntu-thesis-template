@@ -41,7 +41,7 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - `ntusetup.tex` — personal data only: the `\ntusetup` metadata block and the
   `\ntucommittee` entries. Keep style out of it; that split is the point.
 - `ntuthesis.cls` — the class. Cover, verification letter, watermark, DOI
-  stamp, front-matter environments, the `\ntufontsetup` font lookup.
+  stamp, front-matter environments, and font configuration.
 - `environments.tex` — the `wherelist` environment.
 - `front/` — abstract, acknowledgement, denotation, and the two official
   verification-letter PDFs (blank master's and doctoral forms from 教務處).
@@ -71,55 +71,23 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   bibliography unnoticed.
 - Never commit a real signed verification letter, a real DOI, a real student
   ID, or a real acknowledgement.
-- Never commit proprietary font files. Every extension `\ntufontsetup` can
-  load — `.ttf`, `.otf`, `.ttc` — is gitignored under `fonts/`, except for the
-  freely licensed faces the template ships (Tinos, 全字庫 TW-Kai/TW-Sung).
-  Widening the resolver to another extension means widening `.gitignore` too.
-  Times New Roman and 標楷體 are proprietary; upstream bundles them, this fork
-  deliberately does not.
+- Never commit proprietary font files. This fork deliberately does not ship
+  Times New Roman or 標楷體.
 - MIT licensed, derived from
   [Hsins/NTU-Thesis-LaTeX-Template](https://github.com/Hsins/NTU-Thesis-LaTeX-Template)
   (MIT, © 2017 Hsin-Hsiang Peng). MIT requires that copyright notice to travel
   with the work, so `LICENSE` must keep both copyright lines.
-- Comments explaining a setting the user edits are bilingual, Chinese first:
-  the class options, `\ntufontsetup` and `\ntusetup` in `main.tex`, and all of
-  `ntusetup.tex`. Every other comment — the class internals, `scripts/` — is
-  English only.
-- A comment carries only what a reader cannot get from the code: how to call a
-  command, what a value may be, a constraint that is not obvious. Reasoning for
-  a change belongs in its commit message, not in a comment or a README.
-- Any change to a class option, to how `\ntufontsetup` resolves a font, or to the
-  inclusion order has to be reflected in `README.md`'s edit-order table.
+- Comments for user-editable settings are bilingual, Chinese first;
+  implementation comments are English. Keep them to use and non-obvious
+  constraints, not design rationale.
+- Keep the README's user-facing overview in sync with changes to user-editable
+  configuration.
 
 ## Constraints worth remembering
 
 - `front/abstract.tex` calls `\zhlipsum[1][name=trad]`; the package default is
   simplified Chinese, which a traditional-only CJK face cannot set.
-- `\ntufontsetup`'s `engfont`/`cjkfont` each take a font file in `fonts/`, named
-  with its extension, or an installed family name; `\ntu@font@set` tries the file
-  first. It guesses nothing — no extension, no `-Bold` sibling. A family name
-  brings its own styles from the platform font manager, and a file is one face,
-  so the user names the rest in `engfontoptions`/`cjkfontoptions`, passed to
-  fontspec untouched.
-- The family branch must keep checking `\IfFontExistsTF` before loading.
-  fontconfig answers a request for a missing family with a metric-compatible
-  substitute (`fc-match "Times New Roman"` often returns Tinos), so without the
-  check a missing font produces a plausible PDF in the wrong typeface instead of
-  an error. `\IfFontExistsTF` is not fooled by the substitution.
-- A font in `fonts/` cannot be reached by family name, only by path. XeTeX
-  resolves families through the platform font manager, which does not see a
-  project directory, and `OSFONTDIR` extends only kpathsea's *filename* search —
-  `kpsewhich Tinos-Regular.ttf` finds the file while `\setmainfont{Tinos}` does
-  not. Listing the directory in a `fonts.conf` and running `fc-cache` does work,
-  but only on Linux and never on Overleaf.
-- The fonts are set by `\ntufontsetup` in main.tex, below `\documentclass`, not
-  by class options: `\documentclass` runs its option list through `\zap@space`,
-  which would turn a value of `{Times New Roman}` into `TimesNewRoman`, and the
-  font the rules name has spaces in it. `\ntufontsetup` sets the fonts as it
-  reads them, so where it sits in main.tex is the ordering — no hook, no
-  `\AtBeginDocument`, no extra package.
-- Neither font name has a default in the class; `\ntufontsetup` errors on an
-  empty `engfont` or `cjkfont`. main.tex is the one place either is written.
+- Set fonts with `\ntufontsetup` in `main.tex`, below `\documentclass`.
 - `fonts/` is ~72 MB, almost all of it the two 全字庫 TTFs. Adding the `Ext-B`
   or `Plus` variants would roughly double that for characters a thesis will not
   use.
@@ -171,18 +139,9 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   the same peak ink.
 - `scripts/thesis_metadata.py` is the one reader of `main.tex` and
   `ntusetup.tex`; the spine and the TDR filler both go through it, so a change
-  to how a value is written is a change in one place. `parse_keyval_command`
-  reads any such block; `parse_ntusetup` is it applied to `\ntusetup`.
-- `scripts/make_spine.py` resolves `cjkfont` exactly as `ntuthesis.cls` does and
-  has to keep doing so: the file in `fonts/chinese/`, then an installed family.
-- When `cjkfont` names an installed family, the spine matches it against
-  `font_names`, which must keep the face's *localized* name records and its
-  typographic family (ID 16): a font answers to all of them — TW-Kai is also
-  全字庫正楷體, and a face in a family of more than four styles carries its real
-  family only in ID 16 — and any of them may be written.
-  `reduced` must likewise keep word characters of every script — reducing to
-  ASCII leaves every CJK name empty, and empty compares equal to empty, so
-  標楷體 would match 新細明體.
+  to how a value is written is a change in one place.
+- When changing CJK font resolution, keep `ntuthesis.cls` and
+  `scripts/make_spine.py` aligned.
 - The spine stretches its rows between two hard-coded points, `COVER_TOP_PT`
   and `COVER_BOTTOM_PT`, where `\makecover`'s fixed 3 cm margins and its
   `\vfill`s put the cover's first and last lines. Changing

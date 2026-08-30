@@ -113,37 +113,10 @@ the file appearing, but not disappearing, so switching back needs
 
 ## Fonts
 
-`main.tex` names both fonts in one place:
-
-```latex
-\ntufontsetup{
-  engfont = {Tinos-Regular.ttf},
-  engfontoptions = {
-    BoldFont       = Tinos-Bold.ttf,
-    ItalicFont     = Tinos-Italic.ttf,
-    BoldItalicFont = Tinos-BoldItalic.ttf,
-  },
-  cjkfont = {TW-Kai-98_1.ttf},
-  cjkfontoptions = {},
-}
-```
-
-`engfont` takes a file in `fonts/english/`, extension included, or the name of a
-font family installed on the system — Overleaf's image included. The file is
-looked for first. `cjkfont` is the same for `fonts/chinese/`. Neither matching is
-an error; nothing is substituted quietly.
-
-The options go to `fontspec` untouched. A family name brings its own bold and
-italic, so its options can stay empty; a font file is one face, so name the bold
-and italic files yourself or `\textbf` and `\textit` fall back to the upright.
-
-Both defaults ship with the repository, so a fresh clone compiles anywhere with
-nothing installed: **Tinos** and **全字庫正楷體 TW-Kai**
-(`TW-Sung-98_1.ttf` for 正宋體). NTU's rules name **Times New Roman**, and Tinos
-is a metric-compatible clone — same widths, different name in the PDF. On a
-machine that has the real thing, write `engfont = {Times New Roman}` with
-`engfontoptions = {}`. Licences, and where to obtain Times New Roman, 標楷體 and
-新細明體, are in [`fonts/README.md`](fonts/README.md).
+`\ntufontsetup` in `main.tex` lets you choose English and Chinese fonts
+independently, using bundled font files or installed font families (including
+Overleaf's). It defaults to **Times New Roman** and **全字庫正楷體 TW-Kai**. See
+[`fonts/README.md`](fonts/README.md) for the bundled fonts and their licences.
 
 ## NTU format compliance
 
@@ -158,12 +131,6 @@ The template sets the layout for you: A4 paper, a 12 pt body, the 上3 下2 左�
 公分 margins, black body text, the cover at 18/16/14 pt centred, and the order
 of the front matter. Citation labels, URLs, and the DOI stamp are colored by
 default; `grayprint = true` (below) paints those black as well.
-
-The English font is the one thing a fresh clone does **not** satisfy on its own.
-Chinese is set in 楷書, as the rules ask, but `engfont` defaults to the bundled
-Tinos — metrically identical to Times New Roman, and not the font the rules
-name. Set `engfont = {Times New Roman}` on a machine that has it to meet the
-rule as written; see [Fonts](#fonts).
 
 The line spacing follows the `language` option: 1.5 for a thesis written in
 Chinese, double for one written in English, which is what the rules ask of each.
