@@ -153,6 +153,8 @@ from thesis_metadata import (  # noqa: E402
     CollectionError,
     class_options,
     collapse_spaces,
+    key_values,
+    parse_keyval_command,
     parse_ntusetup,
 )
 
@@ -259,7 +261,13 @@ def read_spine_text(root: Path) -> SpineText:
 
 
 def reduced(value: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", value.lower())
+    """A font name with the spacing and punctuation that never matter taken out.
+
+    Word characters of every script are kept. Reducing to ASCII would leave a
+    CJK family name empty, which makes every one of them equal to every other:
+    standing 標楷體 next to 新細明體 would be a match rather than a mismatch.
+    """
+    return re.sub(r"[\W_]+", "", value.lower())
 
 
 def same_font(name: str, candidate: str) -> bool:
@@ -281,15 +289,43 @@ class FontFile:
         return TTFont(self.path, fontNumber=self.index, **kwargs)
 
 
+# The name table entries a face answers to: 1 family, 4 full, 6 PostScript, and
+# 16 the typographic family. A family with more than the four styles the legacy
+# grouping allows splits itself across several ID 1 names -- STIX Two Text
+# Medium is its own ID 1 family, with ID 16 saying it is really STIX Two Text --
+# and the platform resolves the typographic name, so it has to be matched too.
+# ID 1 stays first: font_names(...)[0] is the name the spine letters with.
+FONT_NAME_IDS = (1, 4, 6, 16)
+
+
 def font_names(font: FontFile) -> tuple[str, ...]:
-    """The family, full and PostScript names a face answers to."""
+    """Every name the face answers to, its localized ones included.
+
+    A face carries one record per name and language, and cjkfont may be written
+    as any of them: TW-Kai calls itself 全字庫正楷體 in Chinese, and fontconfig
+    answers to both, so a lookup that read only the preferred name would reject
+    the very font the thesis builds with. The preferred names come first, so
+    font_names(...)[0] is still the family name to letter the spine with.
+    """
     try:
         with font.open(lazy=True) as opened:
             table = opened["name"]
-            return tuple(name for name in (table.getDebugName(i) for i in (1, 4, 6)) if name)
+            found = [table.getDebugName(identifier) for identifier in FONT_NAME_IDS]
+            # backslashreplace, as getDebugName itself uses: one malformed record
+            # should cost that record, not every name the face has.
+            found += [
+                record.toUnicode(errors="backslashreplace")
+                for record in table.names
+                if record.nameID in FONT_NAME_IDS
+            ]
     except Exception:  # noqa: BLE001 - fontTools raises a different type per defect
         logging.debug("Not a readable font: %s", font.name)
         return ()
+    names: list[str] = []
+    for name in found:
+        if name and name not in names:
+            names.append(name)
+    return tuple(names)
 
 
 def matched_font(family: str) -> FontFile | None:
@@ -315,40 +351,50 @@ def matched_font(family: str) -> FontFile | None:
     return FontFile(Path(path), int(index) if index.isdigit() else 0)
 
 
-# 中文字型的來源，抄自 ntuthesis.cls 的 fontset 與 cjkfont 分支。
-# Where the class loads its Chinese face from, per fontset:
-#   default, tinos, (unset)  the shipped file cjkfont names, by path
-#   template                 the user's own BiauKai.ttf, by path
-#   system, overleaf         a family name, resolved by the machine
+# The two places ntuthesis.cls looks for cjkfont, in its order. Both sides have
+# to change together.
 CJK_DIRECTORY = "fonts/chinese"
-CJK_SHIPPED = {"kai": "TW-Kai-98_1.ttf", "sung": "TW-Sung-98_1.ttf"}
-CJK_TEMPLATE_FILE = "BiauKai.ttf"
-CJK_FAMILIES = {"system": "BiauKai", "overleaf": "AR PL KaitiM Big5"}
 
 
-def locate_font(options: dict[str, str], root: Path) -> FontFile:
+def cjk_font_settings(root: Path) -> tuple[str, int | None]:
+    """The Chinese face and optional collection index main.tex names."""
+    settings = parse_keyval_command(root / "main.tex", "ntufontsetup")
+    name = settings.get("cjkfont", "")
+    if not name:
+        raise CollectionError(
+            "main.tex names no cjkfont in \\ntufontsetup. See fonts/README.md."
+        )
+    index = key_values(settings.get("cjkfontoptions", "")).get("FontIndex")
+    if index is None:
+        return name, None
+    if not re.fullmatch(r"\d+", index):
+        raise CollectionError(
+            "main.tex sets cjkfontoptions FontIndex to "
+            f"{index!r}, which is not a non-negative integer."
+        )
+    return name, int(index)
+
+
+def cjk_font_name(root: Path) -> str:
+    """The Chinese face main.tex names."""
+    return cjk_font_settings(root)[0]
+
+
+def locate_font(root: Path) -> FontFile:
     """The file the class sets Chinese in, found the way the class finds it."""
-    fontset = options.get("fontset", "default")
-    if fontset in CJK_FAMILIES:
-        family = CJK_FAMILIES[fontset]
-        candidate = matched_font(family)
-        if candidate and any(same_font(family, found) for found in font_names(candidate)):
-            return candidate
-        raise CollectionError(
-            f"main.tex builds with fontset = {fontset}, which sets Chinese in "
-            f"{family}, and no such face is installed on this machine. Install "
-            "it, or build with a fontset whose Chinese face ships with the template."
-        )
-    if fontset == "template":
-        path = root / CJK_DIRECTORY / CJK_TEMPLATE_FILE
-    else:
-        path = root / CJK_DIRECTORY / CJK_SHIPPED.get(options.get("cjkfont", "kai"), "")
-    if not path.is_file():
-        raise CollectionError(
-            f"main.tex builds with fontset = {fontset}, which sets Chinese in "
-            f"{path}, and that file is not there. See fonts/README.md."
-        )
-    return FontFile(path)
+    name, index = cjk_font_settings(root)
+    path = root / CJK_DIRECTORY / name
+    if path.is_file():
+        return FontFile(path, 0 if index is None else index)
+    candidate = matched_font(name)
+    if candidate and any(same_font(name, found) for found in font_names(candidate)):
+        return candidate if index is None else FontFile(candidate.path, index)
+    raise CollectionError(
+        f"main.tex sets cjkfont = {name}, which is neither a file in "
+        f"{CJK_DIRECTORY}/ nor a font family installed on this machine. Install "
+        "it, or name a Chinese face that ships with the template. See "
+        "fonts/README.md."
+    )
 
 
 # The faces this template redistributes. Their licences (政府資料開放授權條款-1.0,
@@ -382,8 +428,7 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[byt
     if level & FSTYPE_RESTRICTED:
         raise CollectionError(
             f"{font.name} forbids embedding, so it cannot travel inside the spine "
-            "files. Build the thesis with a fontset whose Chinese face ships with "
-            "the template."
+            "files. Set cjkfont to a Chinese face that ships with the template."
         )
     if rights & FSTYPE_BITMAP_ONLY:
         # A spine is lettered at whatever size it takes, and what would travel
@@ -391,8 +436,8 @@ def embeddable_font(font: FontFile, characters: str, relabel: bool) -> tuple[byt
         # to go cannot go, whatever else its rights permit.
         raise CollectionError(
             f"{font.name} allows only its bitmaps to be embedded, not its outlines, "
-            "which is what the spine files carry. Build the thesis with a fontset "
-            "whose Chinese face ships with the template."
+            "which is what the spine files carry. Set cjkfont to a Chinese face "
+            "that ships with the template."
         )
 
     options = subset.Options()
@@ -1310,7 +1355,7 @@ def build(args: argparse.Namespace) -> None:
             )
         pages = document.page_count
 
-    font_file = locate_font(class_options(PROJECT_ROOT / "main.tex"), PROJECT_ROOT)
+    font_file = locate_font(PROJECT_ROOT)
     logging.info("The thesis sets Chinese in %s", font_file.path)
     text = read_spine_text(PROJECT_ROOT)
     absent = missing_characters(font_file, text.characters())

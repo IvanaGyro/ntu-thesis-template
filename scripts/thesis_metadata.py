@@ -119,14 +119,19 @@ def key_values(block: str) -> dict[str, str]:
     return values
 
 
-def parse_ntusetup(path: Path) -> dict[str, str]:
-    """Every key of the `\\ntusetup` block, as plain text."""
+def parse_keyval_command(path: Path, command: str) -> dict[str, str]:
+    """Every key of the `\\<command>{...}` block in the file, as plain text."""
     text = strip_comments(path.read_text(encoding="utf-8"))
-    marker = re.search(r"\\ntusetup\s*\{", text)
+    marker = re.search(rf"\\{command}\s*\{{", text)
     if not marker:
-        raise CollectionError(f"Could not find \\ntusetup in {path}")
+        raise CollectionError(f"Could not find \\{command} in {path}")
     block, _ = braced_group(text, marker.end() - 1)
     return {key: latex_to_plain(value).strip() for key, value in key_values(block).items()}
+
+
+def parse_ntusetup(path: Path) -> dict[str, str]:
+    """Every key of the `\\ntusetup` block, as plain text."""
+    return parse_keyval_command(path, "ntusetup")
 
 
 def class_options(path: Path) -> dict[str, str]:

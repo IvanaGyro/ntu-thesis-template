@@ -56,7 +56,7 @@ The split is deliberate: **`main.tex` holds every style and layout setting,
 | Step | File | What goes in it |
 | --- | --- | --- |
 | 1 | `ntusetup.tex` | Title, author, student ID, advisor, department, keywords, DOI, email, ORCID, and the oral examination committee. The only place personal data belongs. |
-| 2 | `main.tex` | Class options, the verification-letter path, package loading, and the bibliography style. |
+| 2 | `main.tex` | Class options, the two fonts, the verification-letter path, package loading, and the bibliography style. |
 | 3 | `front/abstract.tex` | Chinese and English abstracts, three pages each at most. |
 | 4 | `front/acknowledgement.tex` | 謝辭, optional, one page at most. |
 | 5 | `front/denotation.tex` | Symbol list. Ships one example per broad field — keep what fits, delete the rest. |
@@ -113,20 +113,10 @@ the file appearing, but not disappearing, so switching back needs
 
 ## Fonts
 
-`fontset = default` uses **your system's Times New Roman** for English — the
-font the format rules name, present on Windows and macOS, and not shipped here
-because it is proprietary — together with **全字庫正楷體 TW-Kai**, which is
-bundled. `cjkfont = sung` switches the Chinese face to **全字庫正宋體 TW-Sung**.
-
-If Times New Roman is not installed, the build **stops with an error** rather
-than quietly substituting a look-alike. Set `fontset = tinos` to use the
-bundled, metric-compatible Tinos instead; that combination needs no installed
-fonts at all and always compiles, including on Overleaf.
-
-`fontset = template` (your own files in `fonts/`), `fontset = system`
-(everything from installed system fonts), and `fontset = overleaf` are also
-available. Full details, licences, and where to obtain Times New Roman, 標楷體
-and 新細明體 are in [`fonts/README.md`](fonts/README.md).
+`\ntufontsetup` in `main.tex` lets you choose English and Chinese fonts
+independently, using bundled font files or installed font families (including
+Overleaf's). It defaults to **Times New Roman** and **全字庫正楷體 TW-Kai**. See
+[`fonts/README.md`](fonts/README.md) for the bundled fonts and their licences.
 
 ## NTU format compliance
 
@@ -137,11 +127,10 @@ From 國立臺灣大學碩、博士學位論文格式規範 (112學年度第1學
 > Roman 打字，中文撰寫以1.5間距，英文則以雙行間距，本文留白上3公分、下2公分、
 > 左右各3公分，字體顏色為黑色
 
-The template sets the layout for you: A4 paper, a 12 pt body in 楷書 and Times
-New Roman, the 上3 下2 左右3 公分 margins, black body text, the cover at
-18/16/14 pt centred, and the order of the front matter. Citation labels, URLs,
-and the DOI stamp are colored by default; `grayprint = true` (below) paints
-those black as well.
+The template sets the layout for you: A4 paper, a 12 pt body, the 上3 下2 左右3
+公分 margins, black body text, the cover at 18/16/14 pt centred, and the order
+of the front matter. Citation labels, URLs, and the DOI stamp are colored by
+default; `grayprint = true` (below) paints those black as well.
 
 The line spacing follows the `language` option: 1.5 for a thesis written in
 Chinese, double for one written in English, which is what the rules ask of each.

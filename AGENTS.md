@@ -41,7 +41,7 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - `ntusetup.tex` — personal data only: the `\ntusetup` metadata block and the
   `\ntucommittee` entries. Keep style out of it; that split is the point.
 - `ntuthesis.cls` — the class. Cover, verification letter, watermark, DOI
-  stamp, front-matter environments, four `fontset` branches.
+  stamp, front-matter environments, and font configuration.
 - `environments.tex` — the `wherelist` environment.
 - `front/` — abstract, acknowledgement, denotation, and the two official
   verification-letter PDFs (blank master's and doctoral forms from 教務處).
@@ -71,31 +71,23 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   bibliography unnoticed.
 - Never commit a real signed verification letter, a real DOI, a real student
   ID, or a real acknowledgement.
-- Never commit proprietary font files. `fonts/**/*.ttf` is gitignored except for
-  the freely licensed faces the template ships (Tinos, 全字庫 TW-Kai/TW-Sung).
-  Times New Roman and 標楷體 are proprietary; upstream bundles them, this fork
-  deliberately does not.
+- Never commit proprietary font files. This fork deliberately does not ship
+  Times New Roman or 標楷體.
 - MIT licensed, derived from
   [Hsins/NTU-Thesis-LaTeX-Template](https://github.com/Hsins/NTU-Thesis-LaTeX-Template)
   (MIT, © 2017 Hsin-Hsiang Peng). MIT requires that copyright notice to travel
   with the work, so `LICENSE` must keep both copyright lines.
-- Comments in `.tex` files are bilingual where they explain a NTU-specific rule,
-  Chinese first. Comments in `.py` files are English.
-- Any change to a class option, a `fontset`, or the inclusion order has to be
-  reflected in `README.md`'s edit-order table.
+- Comments for user-editable settings are bilingual, Chinese first;
+  implementation comments are English. Keep them to use and non-obvious
+  constraints, not design rationale.
+- Keep the README's user-facing overview in sync with changes to user-editable
+  configuration.
 
 ## Constraints worth remembering
 
 - `front/abstract.tex` calls `\zhlipsum[1][name=trad]`; the package default is
   simplified Chinese, which a traditional-only CJK face cannot set.
-- `fontset=default` must keep checking `\IfFontExistsTF{Times New Roman}` before
-  loading it. fontconfig answers that request with a metric-compatible
-  substitute (`fc-match "Times New Roman"` often returns Tinos), so without the
-  check a missing font produces a plausible PDF in the wrong typeface instead of
-  an error. `\IfFontExistsTF` is not fooled by the substitution.
-- Shipped fonts load by *filename* with an explicit `Path`, so they resolve
-  identically on Overleaf and locally without fontconfig. Only `system` and
-  `overleaf` resolve by family name.
+- Set fonts with `\ntufontsetup` in `main.tex`, below `\documentclass`.
 - `fonts/` is ~72 MB, almost all of it the two 全字庫 TTFs. Adding the `Ext-B`
   or `Plus` variants would roughly double that for characters a thesis will not
   use.
@@ -148,6 +140,8 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
 - `scripts/thesis_metadata.py` is the one reader of `main.tex` and
   `ntusetup.tex`; the spine and the TDR filler both go through it, so a change
   to how a value is written is a change in one place.
+- When changing CJK font resolution, keep `ntuthesis.cls` and
+  `scripts/make_spine.py` aligned.
 - The spine stretches its rows between two hard-coded points, `COVER_TOP_PT`
   and `COVER_BOTTOM_PT`, where `\makecover`'s fixed 3 cm margins and its
   `\vfill`s put the cover's first and last lines. Changing
