@@ -153,6 +153,7 @@ from thesis_metadata import (  # noqa: E402
     CollectionError,
     class_options,
     collapse_spaces,
+    key_values,
     parse_keyval_command,
     parse_ntusetup,
 )
@@ -355,25 +356,39 @@ def matched_font(family: str) -> FontFile | None:
 CJK_DIRECTORY = "fonts/chinese"
 
 
-def cjk_font_name(root: Path) -> str:
-    """The Chinese face main.tex names."""
-    name = parse_keyval_command(root / "main.tex", "ntufontsetup").get("cjkfont", "")
+def cjk_font_settings(root: Path) -> tuple[str, int | None]:
+    """The Chinese face and optional collection index main.tex names."""
+    settings = parse_keyval_command(root / "main.tex", "ntufontsetup")
+    name = settings.get("cjkfont", "")
     if not name:
         raise CollectionError(
             "main.tex names no cjkfont in \\ntufontsetup. See fonts/README.md."
         )
-    return name
+    index = key_values(settings.get("cjkfontoptions", "")).get("FontIndex")
+    if index is None:
+        return name, None
+    if not re.fullmatch(r"\d+", index):
+        raise CollectionError(
+            "main.tex sets cjkfontoptions FontIndex to "
+            f"{index!r}, which is not a non-negative integer."
+        )
+    return name, int(index)
+
+
+def cjk_font_name(root: Path) -> str:
+    """The Chinese face main.tex names."""
+    return cjk_font_settings(root)[0]
 
 
 def locate_font(root: Path) -> FontFile:
     """The file the class sets Chinese in, found the way the class finds it."""
-    name = cjk_font_name(root)
+    name, index = cjk_font_settings(root)
     path = root / CJK_DIRECTORY / name
     if path.is_file():
-        return FontFile(path)
+        return FontFile(path, 0 if index is None else index)
     candidate = matched_font(name)
     if candidate and any(same_font(name, found) for found in font_names(candidate)):
-        return candidate
+        return candidate if index is None else FontFile(candidate.path, index)
     raise CollectionError(
         f"main.tex sets cjkfont = {name}, which is neither a file in "
         f"{CJK_DIRECTORY}/ nor a font family installed on this machine. Install "

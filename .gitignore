@@ -30,15 +30,18 @@ __pycache__/
 # Proprietary fonts a user drops in for \ntufontsetup belong to them, not to this
 # repository — see fonts/README.md. The freely licensed fonts the template ships
 # (Tinos, 全字庫 TW-Kai and TW-Sung) are re-included below.
-/fonts/english/*.ttf
-/fonts/english/*.otf
-/fonts/english/*.ttc
-/fonts/chinese/*.ttf
-/fonts/chinese/*.otf
-/fonts/chinese/*.ttc
-!/fonts/english/Tinos-*.ttf
-!/fonts/chinese/TW-Kai-*.ttf
-!/fonts/chinese/TW-Sung-*.ttf
+# Ignore every other file below fonts/, including files in nested directories.
+/fonts/**
+!/fonts/README.md
+!/fonts/OFL.txt
+!/fonts/english/
+!/fonts/english/Tinos-Bold.ttf
+!/fonts/english/Tinos-BoldItalic.ttf
+!/fonts/english/Tinos-Italic.ttf
+!/fonts/english/Tinos-Regular.ttf
+!/fonts/chinese/
+!/fonts/chinese/TW-Kai-98_1.ttf
+!/fonts/chinese/TW-Sung-98_1.ttf
 
 # Generated NTU TDR form filler (contains submission/personal data)
 /.tdr-upload.js
