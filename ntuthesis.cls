@@ -948,8 +948,8 @@
 {}
 {\hfill\contentspage}
 
-\setlength{\cftbeforesecskip}{8pt}                          % 修改目錄間距
-\setlength{\cftbeforesubsecskip}{8pt}
+\setlength{\cftbeforesecskip}{4pt}                          % 修改目錄間距
+\setlength{\cftbeforesubsecskip}{4pt}
 
 \setcounter{tocdepth}{3}                                    % 設定目錄深度
 \setcounter{secnumdepth}{3}                                 % 設定編號深度
