@@ -136,11 +136,11 @@ The line spacing follows the `language` option: 1.5 for a thesis written in
 Chinese, double for one written in English, which is what the rules ask of each.
 The template calculates it from the selected fonts to match Word. Values for
 Times New Roman, 標楷體, and the bundled fonts are included; for another font,
-run `pixi run line-spacing` when the build asks. It writes
-`ntu-line-spacing.tex`, which the class loads automatically.
+run `pixi run line-spacing` when the build asks. The generated custom-font file
+is loaded automatically but ignored by Git.
 
 The Chinese and English abstracts always follow the spacing for their own
-language. A later `\setstretch` in `main.tex` can still override the thesis body.
+language. Figure, table, and subfigure captions remain single-spaced.
 
 The lengths are yours to keep to — 摘要 at three pages and 謝辭 at one — and each
 file says so at the top; nothing stops an overlong one from typesetting.

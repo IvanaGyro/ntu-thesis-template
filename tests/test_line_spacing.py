@@ -104,20 +104,36 @@ class FormulaTests(unittest.TestCase):
             (Fraction(6, 5), "legacy-max"),
         )
 
-    def test_exact_report_setspace_conversions(self) -> None:
+    def test_exact_12_point_baseline_conversions(self) -> None:
         self.assertEqual(
-            spacing.setstretch_factor(Fraction(13, 10), "cjkfont"),
-            Fraction(234, 145),
+            spacing.baseline_skip(Fraction(13, 10), "cjkfont"),
+            Fraction(117, 5),
         )
         self.assertEqual(
-            spacing.setstretch_factor(Fraction(2355, 2048), "engfont"),
-            Fraction(7065, 3712),
+            spacing.baseline_skip(Fraction(2355, 2048), "engfont"),
+            Fraction(7065, 256),
         )
-        self.assertEqual(spacing.decimal_factor(Fraction(234, 145)), "1.613793103448")
-        self.assertEqual(spacing.decimal_factor(Fraction(7065, 3712)), "1.903286637931")
+        self.assertEqual(spacing.decimal_points(Fraction(117, 5)), "23.400000000000")
+        self.assertEqual(
+            spacing.decimal_points(Fraction(7065, 256)), "27.597656250000"
+        )
 
 
 class ShippedFontTests(unittest.TestCase):
+    def test_class_fallbacks_match_the_default_fonts(self) -> None:
+        records = {record.key: record for record in spacing.precomputed_records()}
+        english = spacing.decimal_points(
+            records[("engfont", "family", "Times New Roman", "default")].baseline
+        )
+        chinese = spacing.decimal_points(
+            records[("cjkfont", "file", "TW-Kai-98_1.ttf", "default")].baseline
+        )
+        class_text = (ROOT / "ntuthesis.cls").read_text(encoding="utf-8")
+        self.assertIn(rf"\newcommand{{\ntu@baseline@en}}{{{english}}}", class_text)
+        self.assertIn(rf"\newcommand{{\ntu@baseline@zh}}{{{chinese}}}", class_text)
+        self.assertIn(rf"\def\ntu@baseline@en{{{english}}}%", class_text)
+        self.assertIn(rf"\def\ntu@baseline@zh{{{chinese}}}%", class_text)
+
     def test_tinos_faces_have_times_new_roman_metrics(self) -> None:
         for name in SHIPPED_ENGLISH_FONTS:
             path = ROOT / "fonts/english" / name
@@ -193,11 +209,14 @@ class ParserAndGeneratorTests(unittest.TestCase):
                 "UprightFeatures = {Scale = 2}", "engfontoptions"
             )
 
-    def test_checked_in_registry_is_current(self) -> None:
+    def test_checked_in_default_registry_is_current(self) -> None:
         self.assertEqual(
-            (ROOT / spacing.OUTPUT_NAME).read_text(encoding="utf-8"),
-            spacing.render_registry(ROOT),
+            (ROOT / spacing.DEFAULT_REGISTRY_NAME).read_text(encoding="utf-8"),
+            spacing.render_default_registry(),
         )
+
+    def test_default_config_needs_no_user_records(self) -> None:
+        self.assertEqual(spacing.current_records(ROOT), ())
 
     def test_multiple_active_font_setup_commands_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -230,9 +249,11 @@ class ParserAndGeneratorTests(unittest.TestCase):
             second = spacing.render_registry(root)
             self.assertEqual(first, second)
             self.assertIn(
-                r"\nturegisterfontspacing{engfont}{file}{Custom Font.ttf}{default}{1.903286637931}",
+                r"\nturegisterfontspacing{engfont}{file}{Custom Font.ttf}{default}{27.597656250000}",
                 first,
             )
+            self.assertNotIn("Times New Roman", first)
+            self.assertNotIn("TW-Kai-98_1.ttf", first)
             self.assertIn("sha256=", first)
             self.assertNotIn(str(root), first)
 

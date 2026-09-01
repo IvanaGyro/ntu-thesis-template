@@ -57,8 +57,9 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   locking), `extract_cover.py` (cover-page extraction), `make_spine.py` (書側
   artwork), `generate_line_spacing.py` (font metrics), and `thesis_metadata.py`
   (the shared reader for main.tex and ntusetup.tex).
-- `ntu-line-spacing.tex` — generated line-spacing values for configured fonts
-  that are not precomputed; `pixi run line-spacing` writes it.
+- `ntu-line-spacing-default.tex` — committed values for the named defaults and
+  bundled fonts. `ntu-line-spacing.tex` is the ignored user registry written by
+  `pixi run line-spacing` for any other configured font.
 - `generate_tdr_upload_script.py`, `tdr_upload_template.js` — NTU TDR form
   filler.
 
@@ -149,9 +150,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   `\vfill`s put the cover's first and last lines. Changing
   `\ntu@geometry@cover`, or the cover's 18 pt on 27 pt body, changes those two
   numbers in `scripts/make_spine.py`.
-- Line spacing goes through `\setstretch` only. The body follows `language`,
-  each abstract follows its own language, and `\makecover` stays inside
-  `singlespace` so the spine coordinates do not move.
+- Body and abstract line spacing is the second argument of `\fontsize`; the
+  body follows `language`, while each abstract follows its own language.
+  Ordinary floats and captions retain `setspace`'s single-spacing reset, and
+  `\makecover` stays inside `singlespace` so the spine coordinates do not move.
 - NTU's format rules (fonts, 12 pt, margins 3/2/3/3, spacing, cover sizes) are
   quoted with their source in `README.md`. Verify against
   <https://www.lib.ntu.edu.tw/doc/cl/THESISSAMPLE.doc> before changing layout.

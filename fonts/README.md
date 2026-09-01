@@ -96,10 +96,11 @@ project root when the build asks:
 pixi run line-spacing
 ```
 
-The task reads the font settings in `main.tex` and writes
-`ntu-line-spacing.tex`, which the class loads automatically. Run it again after
-changing either font or its `FontIndex`. Keep the generated file with the thesis,
-and upload it with the rest of the project when building on Overleaf.
+The task reads the font settings in `main.tex` and writes the user-specific
+`ntu-line-spacing.tex`, which the class loads after the committed
+`ntu-line-spacing-default.tex`. Run it again after changing either font or its
+`FontIndex`. The user-specific file is ignored by Git; keep it locally and
+upload it with the rest of the project when building on Overleaf.
 
 ## Using the exact fonts NTU names
 

@@ -712,7 +712,7 @@
 % [字型設定]
 % Fonts
 
-% \nturegisterfontspacing records the final setspace factor for one exact font
+% \nturegisterfontspacing records the 12 pt baseline skip for one exact font
 % selection. The generated table distinguishes project files from system
 % families and treats an omitted FontIndex differently from an explicit zero.
 \newcommand{\nturegisterfontspacing}[5]{%
@@ -723,12 +723,13 @@
   \endgroup
 }
 
-\InputIfFileExists{./ntu-line-spacing.tex}{}{%
+\InputIfFileExists{./ntu-line-spacing-default.tex}{}{%
   \ntu@error{%
-    ntu-line-spacing.tex is missing.\MessageBreak
-    Run `pixi run line-spacing`, then compile again.%
+    ntu-line-spacing-default.tex is missing.\MessageBreak
+    Restore it from the thesis template, then compile again.%
   }%
 }
+\InputIfFileExists{./ntu-line-spacing.tex}{}{}
 
 \define@key{ntu@fontspacingoptions}{FontIndex}{%
   \ifnum\numexpr#1\relax<\z@
@@ -769,7 +770,6 @@
 }
 
 \newcommand{\ntu@fontspacing@get}[5]{%
-  \def#5{1}% Keep the first ClassError from cascading into undefined macros.
   \ifthenelse{\equal{#2}{missing}}{}{%
     \edef\ntu@fontspacing@name{\expandafter\detokenize\expandafter{#3}}%
     \edef\ntu@fontspacing@key{%
@@ -787,8 +787,18 @@
   }%
 }
 
-\newcommand{\ntu@stretch@zh}{1}
-\newcommand{\ntu@stretch@en}{1}
+\newcommand{\ntu@baseline@zh}{23.400000000000}
+\newcommand{\ntu@baseline@en}{27.597656250000}
+
+\newcommand{\ntu@fontspacing@apply}[1]{%
+  \fontsize{12}{#1}\selectfont
+}
+
+\newcommand{\ntu@fontspacing@applybody}{%
+  \ifthenelse{\equal{\ntu@language}{chinese}}
+    {\ntu@fontspacing@apply{\ntu@baseline@zh}}
+    {\ntu@fontspacing@apply{\ntu@baseline@en}}%
+}
 
 % Apply a face after \ntu@font@set has decided which resolution branch won.
 \newcommand{\ntu@font@applyresolved}[5]{%
@@ -847,8 +857,8 @@
 % The CJK monospaced face is the CJK face, so CJK inside \texttt and code blocks
 % does not fall back to one that cannot set it.
 \newcommand{\ntufontsetup}[1]{%
-  \def\ntu@stretch@zh{1}%
-  \def\ntu@stretch@en{1}%
+  \def\ntu@baseline@zh{23.400000000000}%
+  \def\ntu@baseline@en{27.597656250000}%
   \def\ntu@engfont{}%
   \def\ntu@engfontoptions{}%
   \def\ntu@cjkfont{}%
@@ -865,12 +875,9 @@
   \expandafter\ntu@fontspacing@findindex\expandafter{\ntu@cjkfontoptions}%
   \edef\ntu@cjkfontindex{\ntu@fontspacing@index}%
   \ntu@fontspacing@get
-    {engfont}{\ntu@engfontsource}{\ntu@engfont}{\ntu@engfontindex}{\ntu@stretch@en}%
+    {engfont}{\ntu@engfontsource}{\ntu@engfont}{\ntu@engfontindex}{\ntu@baseline@en}%
   \ntu@fontspacing@get
-    {cjkfont}{\ntu@cjkfontsource}{\ntu@cjkfont}{\ntu@cjkfontindex}{\ntu@stretch@zh}%
-  \ifthenelse{\equal{\ntu@language}{chinese}}
-    {\setstretch{\ntu@stretch@zh}}
-    {\setstretch{\ntu@stretch@en}}%
+    {cjkfont}{\ntu@cjkfontsource}{\ntu@cjkfont}{\ntu@cjkfontindex}{\ntu@baseline@zh}%
 }
 
 % [顏色設定]
@@ -936,7 +943,7 @@
 
 % \titlecontents{標題名稱}[左間距]{標題格式}{標題內容}{無序號標題}{指引線與頁碼}[下間距]
 \titlecontents{chapter}[0em]                                % 修改目錄樣式
-{\addvspace{0.5em}\normalsize\bfseries\protect}
+{\addvspace{0.5em}\ntu@fontspacing@applybody\bfseries\protect}
 {\fboxrule=0pt\fboxsep=0pt\framebox[\ntu@tocchaptersize][l]{\ntu@titlechaptertoc}}
 {}
 {\hfill\contentspage}
@@ -1342,7 +1349,7 @@
   \cleardoublepage
   \ntu@setgeometry{\ntu@geometry@main}
   \pagenumbering{arabic}
-  \normalsize
+  \ntu@fontspacing@applybody
 }
 
 % [參考文獻]
@@ -1396,16 +1403,15 @@
 \newenvironment{acknowledgement}{
   \chapter*{\centering \ntu@acknowledgement}
   \addcontentsline{toc}{chapter}{\ntu@acknowledgement}
-  \normalsize
+  \ntu@fontspacing@applybody
 }
 
 % [摘要環境]
 % Abstract Environment
 %
-% Each required abstract uses the computed spacing for its own language. A
-% later body-level \setstretch override therefore does not change either one.
+% Each required abstract uses the computed baseline for its own language.
 \renewenvironment{abstract}{
-  \setstretch{\ntu@stretch@zh}\normalsize
+  \ntu@fontspacing@apply{\ntu@baseline@zh}
   \chapter*{\centering \ntu@abstract@zh}
   \addcontentsline{toc}{chapter}{\ntu@abstract@zh}
 }{
@@ -1415,7 +1421,7 @@
 }
 
 \newenvironment{abstract*}{
-  \setstretch{\ntu@stretch@en}\normalsize
+  \ntu@fontspacing@apply{\ntu@baseline@en}
   \chapter*{\centering \ntu@abstract@en}
   \addcontentsline{toc}{chapter}{\ntu@abstract@en}
 }{
@@ -1433,8 +1439,16 @@
 %
 \ifthenelse{\equal{\ntu@doi}{true}}{\insertdoi{\ntu@DOI}}{}
 
-% \ntufontsetup has already loaded both generated factors and selected the
-% document body's factor. The abstract environments select their own above.
+% Font selection happens in the preamble. Apply the body's exact baseline after
+% LaTeX has finished its begin-document font initialization; abstracts select
+% their own language above. biblatex resets its entries to \normalsize, so its
+% font hook must restore the same 12 pt baseline explicitly.
+\AtBeginDocument{%
+  \ntu@fontspacing@applybody
+  \@ifpackageloaded{biblatex}{%
+    \renewcommand*{\bibfont}{\normalfont\ntu@fontspacing@applybody}%
+  }{}%
+}
 
 % 中文化
 % \newcommand{\loflabel}{圖}
