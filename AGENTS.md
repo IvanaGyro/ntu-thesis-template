@@ -55,8 +55,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   `contents/chapter02.tex`.
 - `scripts/` — `tex_toolchain.py` (TinyTeX), `protect_pdf.py` (submission
   locking), `extract_cover.py` (cover-page extraction), `make_spine.py` (書側
-  artwork), `thesis_metadata.py` (main.tex and ntusetup.tex, shared with
-  `generate_tdr_upload_script.py`).
+  artwork), `generate_line_spacing.py` (font metrics), and `thesis_metadata.py`
+  (the shared reader for main.tex and ntusetup.tex).
+- `ntu-line-spacing.tex` — generated line-spacing values for configured fonts
+  that are not precomputed; `pixi run line-spacing` writes it.
 - `generate_tdr_upload_script.py`, `tdr_upload_template.js` — NTU TDR form
   filler.
 
@@ -138,15 +140,18 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   differencing each against a `watermark=false` build; both seals must reach
   the same peak ink.
 - `scripts/thesis_metadata.py` is the one reader of `main.tex` and
-  `ntusetup.tex`; the spine and the TDR filler both go through it, so a change
-  to how a value is written is a change in one place.
-- When changing CJK font resolution, keep `ntuthesis.cls` and
-  `scripts/make_spine.py` aligned.
+  `ntusetup.tex`; the spine, line-spacing generator, and TDR filler all go
+  through it, so a change to how a value is written is a change in one place.
+- When changing font resolution, keep `ntuthesis.cls`,
+  `scripts/generate_line_spacing.py`, and `scripts/make_spine.py` aligned.
 - The spine stretches its rows between two hard-coded points, `COVER_TOP_PT`
   and `COVER_BOTTOM_PT`, where `\makecover`'s fixed 3 cm margins and its
   `\vfill`s put the cover's first and last lines. Changing
   `\ntu@geometry@cover`, or the cover's 18 pt on 27 pt body, changes those two
   numbers in `scripts/make_spine.py`.
+- Line spacing goes through `\setstretch` only. The body follows `language`,
+  each abstract follows its own language, and `\makecover` stays inside
+  `singlespace` so the spine coordinates do not move.
 - NTU's format rules (fonts, 12 pt, margins 3/2/3/3, spacing, cover sizes) are
   quoted with their source in `README.md`. Verify against
   <https://www.lib.ntu.edu.tw/doc/cl/THESISSAMPLE.doc> before changing layout.

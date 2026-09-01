@@ -134,12 +134,13 @@ default; `grayprint = true` (below) paints those black as well.
 
 The line spacing follows the `language` option: 1.5 for a thesis written in
 Chinese, double for one written in English, which is what the rules ask of each.
-To set some other spacing, override it in `main.tex` below `\documentclass`,
-where the rest of the layout lives:
+The template calculates it from the selected fonts to match Word. Values for
+Times New Roman, 標楷體, and the bundled fonts are included; for another font,
+run `pixi run line-spacing` when the build asks. It writes
+`ntu-line-spacing.tex`, which the class loads automatically.
 
-```latex
-\setstretch{1.2}                     % 1.2：1.5 倍行距, 1.6：2.0 倍行距
-```
+The Chinese and English abstracts always follow the spacing for their own
+language. A later `\setstretch` in `main.tex` can still override the thesis body.
 
 The lengths are yours to keep to — 摘要 at three pages and 謝辭 at one — and each
 file says so at the top; nothing stops an overlong one from typesetting.

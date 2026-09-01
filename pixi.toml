@@ -44,4 +44,6 @@ clean = { cmd = "python scripts/tex_toolchain.py clean", description = "Remove L
 cover = { cmd = "python scripts/extract_cover.py", description = "Write main-cover.pdf: page 1 of main.pdf alone, stripped of the document-wide objects a cover does not need" }
 protect = { cmd = "python scripts/protect_pdf.py", description = "Write main-protected.pdf: readable by anyone, editing and copying locked behind an owner password" }
 spine = { cmd = "python scripts/make_spine.py", description = "Write the spine artwork (書側) as ODT and PDF, in both 平裝 and 精裝 widths" }
+line-spacing = { cmd = "python scripts/generate_line_spacing.py", description = "Generate font-aware line spacing for the fonts selected in main.tex" }
+test = { cmd = "python -m unittest discover -s tests -v", description = "Run the Python unit tests" }
 units = { cmd = "python scripts/fetch_academic_units.py", description = "Refresh ntu-academic-units.tex from NTU's published list of academic units" }

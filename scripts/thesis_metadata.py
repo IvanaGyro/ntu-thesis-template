@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Read the thesis's own words out of main.tex and ntusetup.tex.
 
-Two scripts need the same few facts about a thesis -- the spine artwork and
-the TDR upload filler -- and both should read them from the same place and
-in the same way. This is that place: the `\\documentclass` options that say
-which degree and which fonts, and the `\\ntusetup` block that says whose
-thesis it is and what it is called.
+The spine artwork, line-spacing generator, and TDR upload filler need the same
+few facts about a thesis and should read them in the same way. This is that
+place: the `\\documentclass` options that say which degree and which fonts, and
+the `\\ntusetup` block that says whose thesis it is and what it is called.
 
 The source is read rather than the built PDF: what `\\ntusetup` holds is one
 value per key, already free of the line breaks a typeset cover puts in.
@@ -119,14 +118,34 @@ def key_values(block: str) -> dict[str, str]:
     return values
 
 
+def parse_keyval_command_raw(path: Path, command: str) -> dict[str, str]:
+    """Every key of a command block, preserving its configured TeX tokens.
+
+    Comments, surrounding whitespace and one pair of value-grouping braces are
+    syntax rather than part of the value and come off.  Unlike
+    :func:`parse_keyval_command`, TeX commands and escapes inside the value are
+    not interpreted or discarded.
+    """
+    text = strip_comments(path.read_text(encoding="utf-8"))
+    markers = list(re.finditer(rf"\\{command}\s*\{{", text))
+    if not markers:
+        raise CollectionError(f"Could not find \\{command} in {path}")
+    if len(markers) > 1:
+        raise CollectionError(
+            f"Found {len(markers)} active \\{command} commands in {path}; "
+            "keep exactly one"
+        )
+    marker = markers[0]
+    block, _ = braced_group(text, marker.end() - 1)
+    return key_values(block)
+
+
 def parse_keyval_command(path: Path, command: str) -> dict[str, str]:
     """Every key of the `\\<command>{...}` block in the file, as plain text."""
-    text = strip_comments(path.read_text(encoding="utf-8"))
-    marker = re.search(rf"\\{command}\s*\{{", text)
-    if not marker:
-        raise CollectionError(f"Could not find \\{command} in {path}")
-    block, _ = braced_group(text, marker.end() - 1)
-    return {key: latex_to_plain(value).strip() for key, value in key_values(block).items()}
+    return {
+        key: latex_to_plain(value).strip()
+        for key, value in parse_keyval_command_raw(path, command).items()
+    }
 
 
 def parse_ntusetup(path: Path) -> dict[str, str]:

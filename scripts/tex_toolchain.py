@@ -106,7 +106,13 @@ def configure_pytinytex() -> None:
 def tinytex_bin() -> Path:
     """Return TinyTeX's platform binary directory and add it to PATH."""
     configure_pytinytex()
-    return Path(pytinytex.get_tinytex_path()).resolve()
+    bin_dir = Path(pytinytex.get_tinytex_path()).resolve()
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    if os.path.normcase(str(bin_dir)) not in {
+        os.path.normcase(entry) for entry in path_entries if entry
+    }:
+        os.environ["PATH"] = os.pathsep.join((str(bin_dir), *path_entries))
+    return bin_dir
 
 
 def find_tlmgr(bin_dir: Path) -> Path | None:

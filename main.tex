@@ -28,11 +28,12 @@
 % 中英文字型（Fonts）
 %
 % 用 \ntufontsetup 設定中英文字型。engfont 和 cjkfont 可填對應 fonts/ 內的檔案
-% （須含副檔名）或已安裝字族；engfontoptions 和 cjkfontoptions 會原樣交給 fontspec。
+% （須含副檔名）或已安裝字族；多數選項會交給 fontspec，會改變正體字型或縮放的選項不支援。
 %
 % Use \ntufontsetup to set both fonts. engfont and cjkfont accept a file in the
-% matching fonts/ directory (extension included) or an installed family;
-% engfontoptions and cjkfontoptions are passed unchanged to fontspec.
+% matching fonts/ directory (extension included) or an installed family. Most
+% fontspec options pass through; options that replace or scale the upright face
+% are unsupported because they invalidate the calculated line spacing.
 %
 % Example:
 % \ntufontsetup{
