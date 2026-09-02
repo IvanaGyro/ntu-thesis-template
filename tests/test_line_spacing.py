@@ -273,11 +273,42 @@ class ParserAndGeneratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = self._project(Path(directory))
             output = root / spacing.OUTPUT_NAME
+            self.assertFalse(spacing.generate(root, output, check=True))
+            self.assertFalse(output.exists())
             self.assertFalse(spacing.generate(root, output))
             self.assertTrue(spacing.generate(root, output))
             output.write_text("stale\n", encoding="utf-8")
             self.assertFalse(spacing.generate(root, output, check=True))
             self.assertEqual(output.read_text(encoding="utf-8"), "stale\n")
+
+    def test_check_allows_missing_registry_for_precomputed_fonts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / spacing.OUTPUT_NAME
+            self.assertTrue(spacing.generate(ROOT, output, check=True))
+            self.assertFalse(output.exists())
+
+    def test_check_rejects_old_user_registry_for_precomputed_fonts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / spacing.OUTPUT_NAME
+            output.write_text("stale\n", encoding="utf-8")
+            self.assertFalse(spacing.generate(ROOT, output, check=True))
+            self.assertEqual(output.read_text(encoding="utf-8"), "stale\n")
+
+    def test_check_detects_font_replaced_under_the_same_name(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._project(Path(directory))
+            output = root / spacing.OUTPUT_NAME
+            spacing.generate(root, output)
+            original = output.read_text(encoding="utf-8")
+
+            shutil.copy2(
+                ROOT / "fonts/chinese/TW-Kai-98_1.ttf",
+                root / "fonts/english/Custom Font.ttf",
+            )
+
+            self.assertFalse(spacing.generate(root, output, check=True))
+            self.assertEqual(output.read_text(encoding="utf-8"), original)
+            self.assertNotEqual(spacing.render_registry(root), original)
 
     def test_changed_config_replaces_the_custom_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -137,7 +137,8 @@ Chinese, double for one written in English, which is what the rules ask of each.
 The template calculates it from the selected fonts to match Word. Values for
 Times New Roman, 標楷體, and the bundled fonts are included; for another font,
 run `pixi run line-spacing` when the build asks. The generated custom-font file
-is loaded automatically but ignored by Git.
+is loaded automatically but ignored by Git. Each Pixi build checks it against
+the selected font files and asks you to regenerate it when a font has changed.
 
 The Chinese and English abstracts always follow the spacing for their own
 language. Figure, table, and subfigure captions remain single-spaced.

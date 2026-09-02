@@ -302,6 +302,16 @@ def build() -> None:
     verify_toolchain()
     subprocess.run(
         [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "generate_line_spacing.py"),
+            "--check",
+        ],
+        check=True,
+        cwd=PROJECT_ROOT,
+        env=os.environ.copy(),
+    )
+    subprocess.run(
+        [
             "latexmk",
             "-pdf",
             "-pdflatex=xelatex -shell-escape -interaction=nonstopmode "

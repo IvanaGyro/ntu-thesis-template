@@ -364,9 +364,10 @@ def render_default_registry() -> str:
     )
 
 
-def render_registry(root: Path) -> str:
-    """The ignored user registry for currently selected custom fonts."""
-    generated = current_records(root)
+def _render_user_registry(
+    generated: tuple[tuple[SpacingRecord, str], ...],
+) -> str:
+    """Render the ignored registry from already calculated custom records."""
     records = {record.key: record for record, _ in generated}
     provenance = {record.key: comment for record, comment in generated}
     return _render_registry(
@@ -377,6 +378,11 @@ def render_registry(root: Path) -> str:
             "% This user-specific file is ignored by Git.",
         ],
     )
+
+
+def render_registry(root: Path) -> str:
+    """The ignored user registry for currently selected custom fonts."""
+    return _render_user_registry(current_records(root))
 
 
 def atomic_write(path: Path, contents: str) -> None:
@@ -403,8 +409,14 @@ def atomic_write(path: Path, contents: str) -> None:
 
 def generate(root: Path, output: Path, check: bool = False) -> bool:
     """Write or check the registry; return whether it was already current."""
-    expected = render_registry(root)
+    generated = current_records(root)
+    expected = _render_user_registry(generated)
     existing = output.read_text(encoding="utf-8") if output.is_file() else None
+    # A fresh checkout using only precomputed fonts intentionally has no ignored
+    # user registry.  An existing file must still match: it may contain stale
+    # declarations that override the committed defaults.
+    if existing is None and not generated:
+        return True
     if existing == expected:
         return True
     if check:
