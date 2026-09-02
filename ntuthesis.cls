@@ -229,8 +229,9 @@
 
 % geometry records \baselineskip at \begin{document} and every \newgeometry and
 % \restoregeometry puts that value back, so both switches end by applying the
-% body baseline again; without it the front matter after the cover and the
-% verification letter falls back to \normalsize's leading.
+% body baseline again. Nothing else does: without it the cover, the
+% verification letter, and \mainmatter each leave the pages that follow them at
+% \normalsize's leading.
 \newcommand{\ntu@setgeometry}[1]{%
   \expandafter\newgeometry\expandafter{#1}%
   \ntu@fontspacing@applybody
@@ -1384,7 +1385,6 @@
   \cleardoublepage
   \ntu@setgeometry{\ntu@geometry@main}
   \pagenumbering{arabic}
-  \ntu@fontspacing@applybody
 }
 
 % [參考文獻]
