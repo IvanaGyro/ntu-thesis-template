@@ -122,8 +122,10 @@ latexmk -pdf -pdflatex="xelatex -shell-escape -interaction=nonstopmode -file-lin
   receive macros: `\detokenize{#1}` for the former, `\expandafter\detokenize
   \expandafter{#1}` for the latter. Mixing them makes the key the literal string
   `\ntu@college`, and every check then passes silently.
-- The class reads the data file inside `\makeatletter` at `\AtBeginDocument`,
-  since `@` is not a letter there.
+- The academic-unit check runs from `\ntusetup` itself, and only when one call
+  carries all four of `college`, `college*`, `institute`, and `institute*`. The
+  keys a call leaves out still hold defaults or an earlier call's values, so
+  checking a partial call would warn about a combination nobody wrote.
 - `\ntucommittee` parses with `\setkeys*`, so an unknown key is kept rather than
   raising. A typo like `titel` must not stop a thesis from compiling.
 - The TDR selectors in `tdr_upload_template.js` were read off the real

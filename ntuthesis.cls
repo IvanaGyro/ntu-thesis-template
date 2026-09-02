@@ -120,8 +120,11 @@
   setkeys=\kvsetkeys
 }
 
-\newcommand{\ntusetup}{
-  \kvsetkeys{ntu}
+% Every call ends in the academic unit check, defined further down.
+\newcommand{\ntusetup}[1]{%
+  \ntu@forgetunitkeys
+  \kvsetkeys{ntu}{#1}%
+  \ntu@checkunits
 }
 
 \newcommand{\ntu@define@key}[1]{
@@ -224,7 +227,19 @@
 \newcommand\ntu@date@zh@digit@short[3]{\the\numexpr#1-1911\relax~年~\number#2~月}
 \newcommand\ntu@date@en@short[3]{\monthname[#2], #1}
 
-\newcommand{\ntu@setgeometry}[1]{\expandafter\newgeometry\expandafter{#1}}
+% geometry records \baselineskip at \begin{document} and every \newgeometry and
+% \restoregeometry puts that value back, so both switches end by applying the
+% body baseline again. Nothing else does: without it the cover, the
+% verification letter, and \mainmatter each leave the pages that follow them at
+% \normalsize's leading.
+\newcommand{\ntu@setgeometry}[1]{%
+  \expandafter\newgeometry\expandafter{#1}%
+  \ntu@fontspacing@applybody
+}
+\newcommand{\ntu@restoregeometry}{%
+  \restoregeometry
+  \ntu@fontspacing@applybody
+}
 
 % --------------------------------------------------
 % 03 編譯檢查（Compile Checking）
@@ -516,6 +531,11 @@
   \ntu@literalkey{ntu@institute}{#1}{#2}\ntu@setflag
 }
 
+% The list is read while the class is being loaded, where @ is still a letter
+% and the file's \ntu@declare... macros parse as written.
+\newif\ifntu@unitsknown
+\InputIfFileExists{ntu-academic-units.tex}{\ntu@unitsknowntrue}{}
+
 \newcommand{\ntu@checkunit}[3]{%
   \ntu@macrokeyii{ntu@institute}{#1}{#2}%
   \expandafter\ifcsname\ntu@unit@key\endcsname\else
@@ -530,15 +550,32 @@
   \fi
 }
 
+% The check wants one \ntusetup carrying all four unit keys. Set one on its own
+% and the other three still hold defaults, or whatever an earlier call left
+% behind: a combination the user never wrote, and warning about it says nothing.
+\newif\ifntu@given@college
+\newif\ifntu@given@college@en
+\newif\ifntu@given@institute
+\newif\ifntu@given@institute@en
+
+\ntu@option@hook{college}{\ntu@given@collegetrue}
+\ntu@option@hook{college*}{\ntu@given@college@entrue}
+\ntu@option@hook{institute}{\ntu@given@institutetrue}
+\ntu@option@hook{institute*}{\ntu@given@institute@entrue}
+
+\newcommand{\ntu@forgetunitkeys}{%
+  \ntu@given@collegefalse
+  \ntu@given@college@enfalse
+  \ntu@given@institutefalse
+  \ntu@given@institute@enfalse
+}
+
 \newcommand{\ntu@checkunits}{%
-  \IfFileExists{ntu-academic-units.tex}{%
-    % 這個檢查在 \AtBeginDocument 執行，此時 @ 已不是字母，資料檔裡的
-    % \ntu@declare... 會被拆開，因此要自行切回 letter catcode。
-    % This runs at \AtBeginDocument, where @ is no longer a letter, so the data
-    % file's \ntu@declare... macros would not parse without switching it back.
-    \makeatletter
-    \input{ntu-academic-units}%
-    \makeatother
+  \ifthenelse{\boolean{ntu@unitsknown}
+          \AND \boolean{ntu@given@college}
+          \AND \boolean{ntu@given@college@en}
+          \AND \boolean{ntu@given@institute}
+          \AND \boolean{ntu@given@institute@en}}{%
     \ntu@macrokeyii{ntu@college}{\ntu@college}{\ntu@college@en}%
     \expandafter\ifcsname\ntu@unit@key\endcsname\else
       \ntu@warning{%
@@ -551,7 +588,6 @@
     \ntu@checkunit{\ntu@college@en}{\ntu@institute@en}{*}%
   }{}%
 }
-\AtBeginDocument{\ntu@checkunits}
 
 % --------------------------------------------------
 % 06 選項設定（Options Settings）
@@ -1208,7 +1244,7 @@
 
   % 清除頁碼
   \clearpage
-  \restoregeometry
+  \ntu@restoregeometry
 }
 
 % [生成口委審定書]
@@ -1256,11 +1292,11 @@
   }
 
   % 恢復預設板型
-  \restoregeometry
+  \ntu@restoregeometry
 }
 
 % 掃描版：先鋪上掃描檔，再把浮水印補到前景，最後以 \null 讓這一頁真的輸出，
-% 頁碼便由當前的頁面樣式照常印出。\clearpage 必須在 \restoregeometry 之前，
+% 頁碼便由當前的頁面樣式照常印出。\clearpage 必須在 \ntu@restoregeometry 之前，
 % 這一頁才會用審定書的版面設定輸出。
 %
 % Scanned letter. \null keeps the page non-empty so the page style still prints
@@ -1349,7 +1385,6 @@
   \cleardoublepage
   \ntu@setgeometry{\ntu@geometry@main}
   \pagenumbering{arabic}
-  \ntu@fontspacing@applybody
 }
 
 % [參考文獻]
