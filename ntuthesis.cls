@@ -120,8 +120,7 @@
   setkeys=\kvsetkeys
 }
 
-% 每次設定完就檢查學術單位，見下方「學術單位檢查」。
-% Every call ends in the academic unit check; see 學術單位檢查 below.
+% Every call ends in the academic unit check, defined further down.
 \newcommand{\ntusetup}[1]{%
   \ntu@forgetunitkeys
   \kvsetkeys{ntu}{#1}%
@@ -228,9 +227,6 @@
 \newcommand\ntu@date@zh@digit@short[3]{\the\numexpr#1-1911\relax~年~\number#2~月}
 \newcommand\ntu@date@en@short[3]{\monthname[#2], #1}
 
-% geometry 在 \begin{document} 記下當時的 \baselineskip，之後每個 \newgeometry
-% 與 \restoregeometry 都會把它還原回去，因此換完版面要重設內文行距，否則封面與
-% 審定書之後的前置部分會掉回 \normalsize 的行距。
 % geometry records \baselineskip at \begin{document} and every \newgeometry and
 % \restoregeometry puts that value back, so both switches end by applying the
 % body baseline again; without it the front matter after the cover and the
@@ -534,7 +530,6 @@
   \ntu@literalkey{ntu@institute}{#1}{#2}\ntu@setflag
 }
 
-% 名單在載入類別時就讀進來：此時 @ 還是字母，檔案裡的 \ntu@declare... 才拆得對。
 % The list is read while the class is being loaded, where @ is still a letter
 % and the file's \ntu@declare... macros parse as written.
 \newif\ifntu@unitsknown
@@ -554,8 +549,6 @@
   \fi
 }
 
-% 四個單位鍵要在同一次 \ntusetup 裡出齊才檢查。單獨設定其中一個時，另外三個還
-% 是預設值或前一次呼叫留下的值，那個組合使用者從沒寫過，警告只會是假的。
 % The check wants one \ntusetup carrying all four unit keys. Set one on its own
 % and the other three still hold defaults, or whatever an earlier call left
 % behind: a combination the user never wrote, and warning about it says nothing.
@@ -1391,6 +1384,7 @@
   \cleardoublepage
   \ntu@setgeometry{\ntu@geometry@main}
   \pagenumbering{arabic}
+  \ntu@fontspacing@applybody
 }
 
 % [參考文獻]
