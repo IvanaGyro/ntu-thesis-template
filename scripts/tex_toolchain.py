@@ -99,6 +99,11 @@ FONT_PROBES = (
 
 def configure_pytinytex() -> None:
     """Point PyTinyTeX at the thesis-specific, rootless installation."""
+    if os.name == "nt":
+        # Pixi's Unix-style locale makes TeX Live's bundled Perl warn on Windows.
+        for variable in ("LC_ALL", "LC_CTYPE", "LANG"):
+            if os.environ.get(variable) == "C.UTF-8":
+                os.environ[variable] = "C"
     os.environ["PYTINYTEX_TINYTEX"] = str(TINYTEX_ROOT)
     pytinytex.clear_path_cache()
 

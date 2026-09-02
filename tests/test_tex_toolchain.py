@@ -16,6 +16,19 @@ import tex_toolchain  # noqa: E402
 
 
 class TinyTeXPathTests(unittest.TestCase):
+    def test_windows_c_utf8_locale_is_normalized_for_tex_live(self) -> None:
+        locale = {"LC_ALL": "C.UTF-8", "LC_CTYPE": "C.UTF-8", "LANG": "C.UTF-8"}
+        with (
+            patch("tex_toolchain.os.name", "nt"),
+            patch.dict(os.environ, locale),
+            patch("tex_toolchain.pytinytex.clear_path_cache") as clear_path_cache,
+        ):
+            tex_toolchain.configure_pytinytex()
+
+            for variable in locale:
+                self.assertEqual(os.environ[variable], "C")
+            clear_path_cache.assert_called_once_with()
+
     def test_tinytex_bin_prepends_path_once(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             bin_dir = Path(directory).resolve()

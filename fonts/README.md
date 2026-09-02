@@ -36,7 +36,7 @@ font in a PDF is normal use, and both licences permit it.
   engfont = {Times New Roman},
   engfontoptions = {},
   cjkfont = {TW-Kai-98_1.ttf},
-  cjkfontoptions = {},
+  cjkfontoptions = {AutoFakeBold = 2},
 }
 ```
 
@@ -59,6 +59,14 @@ slant that family has, and `fontspec` pairs them up on its own — leave the
 options empty. A font file is one face, so name the others yourself, as the
 `engfontoptions` above does. Leaving them out still compiles; `\textbf` and
 `\textit` fall back to the upright, with a `Font shape ... undefined` warning.
+
+The bundled TW-Kai file has no separate bold face, although thesis headings and
+keyword labels request bold. `AutoFakeBold = 2` therefore thickens the regular
+glyph outlines synthetically instead of silently printing regular weight and
+warning about the missing shape. This keeps the same character widths, but it
+is not a type-designer-made bold: dense characters can look more crowded and
+lose some interior white space. Clear this option when selecting a family or a
+set of files that includes a real bold face.
 
 The combinations worth knowing:
 
@@ -122,7 +130,7 @@ fonts/chinese/BiauKai.ttf
     ItalicFont = Times New Roman Italic.ttf,
   },
   cjkfont = {BiauKai.ttf},
-  cjkfontoptions = {},
+  cjkfontoptions = {AutoFakeBold = 2},
 }
 ```
 
