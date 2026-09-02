@@ -712,12 +712,116 @@
 % [字型設定]
 % Fonts
 
-% \ntu@font@set{<key>}{<setter>}{<directory>}{<font>}{<options>}
+% \nturegisterfontspacing records the 12 pt baseline skip for one exact font
+% selection. The generated table distinguishes project files from system
+% families and treats an omitted FontIndex differently from an explicit zero.
+\newcommand{\nturegisterfontspacing}[5]{%
+  \begingroup
+    \edef\ntu@fontspacing@name{\detokenize{#3}}%
+    \expandafter\xdef
+      \csname ntu@fontspacing@#1:#2:\ntu@fontspacing@name:#4\endcsname{#5}%
+  \endgroup
+}
+
+\InputIfFileExists{./ntu-line-spacing-default.tex}{}{%
+  \ntu@error{%
+    ntu-line-spacing-default.tex is missing.\MessageBreak
+    Restore it from the thesis template, then compile again.%
+  }%
+}
+\InputIfFileExists{./ntu-line-spacing.tex}{}{}
+
+\define@key{ntu@fontspacingoptions}{FontIndex}{%
+  \ifnum\numexpr#1\relax<\z@
+    \ntu@error{FontIndex must be a non-negative integer (got "#1")}%
+    \def\ntu@fontspacing@index{invalid}%
+  \else
+    \edef\ntu@fontspacing@index{\number\numexpr#1\relax}%
+  \fi
+}
+
+\newcommand{\ntu@fontspacing@unsupported}[1]{%
+  \ntu@error{%
+    #1 changes the body face or its size, so its line spacing cannot be\MessageBreak
+    matched safely. Remove #1 from the font options.%
+  }%
+}
+
+\define@key{ntu@fontspacingoptions}{Scale}{\ntu@fontspacing@unsupported{Scale}}
+\define@key{ntu@fontspacingoptions}{ScaleAgain}{\ntu@fontspacing@unsupported{ScaleAgain}}
+\define@key{ntu@fontspacingoptions}{UprightFont}{\ntu@fontspacing@unsupported{UprightFont}}
+\define@key{ntu@fontspacingoptions}{UprightFeatures}{\ntu@fontspacing@unsupported{UprightFeatures}}
+\define@key{ntu@fontspacingoptions}{SizeFeatures}{\ntu@fontspacing@unsupported{SizeFeatures}}
+\define@key{ntu@fontspacingoptions}{Path}{\ntu@fontspacing@unsupported{Path}}
+\define@key{ntu@fontspacingoptions}{Extension}{\ntu@fontspacing@unsupported{Extension}}
+\define@key{ntu@fontspacingoptions}{KpseOnly}{\ntu@fontspacing@unsupported{KpseOnly}}
+\define@key{ntu@fontspacingoptions}{FontFace}{\ntu@fontspacing@unsupported{FontFace}}
+\define@key{ntu@fontspacingoptions}{Weight}{\ntu@fontspacing@unsupported{Weight}}
+\define@key{ntu@fontspacingoptions}{Width}{\ntu@fontspacing@unsupported{Width}}
+\define@key{ntu@fontspacingoptions}{Slant}{\ntu@fontspacing@unsupported{Slant}}
+\define@key{ntu@fontspacingoptions}{OpticalSize}{\ntu@fontspacing@unsupported{OpticalSize}}
+\define@key{ntu@fontspacingoptions}{RawAxis}{\ntu@fontspacing@unsupported{RawAxis}}
+\define@key{ntu@fontspacingoptions}{Instance}{\ntu@fontspacing@unsupported{Instance}}
+\define@key{ntu@fontspacingoptions}{RawFeature}{\ntu@fontspacing@unsupported{RawFeature}}
+
+\newcommand{\ntu@fontspacing@findindex}[1]{%
+  \def\ntu@fontspacing@index{default}%
+  \setkeys*{ntu@fontspacingoptions}{#1}%
+}
+
+\newcommand{\ntu@fontspacing@get}[5]{%
+  \ifthenelse{\equal{#2}{missing}}{}{%
+    \edef\ntu@fontspacing@name{\expandafter\detokenize\expandafter{#3}}%
+    \edef\ntu@fontspacing@key{%
+      ntu@fontspacing@#1:#2:\ntu@fontspacing@name:#4%
+    }%
+    \ifcsname\ntu@fontspacing@key\endcsname
+      \edef#5{\csname\ntu@fontspacing@key\endcsname}%
+    \else
+      \ntu@error{%
+        No precalculated line spacing for #1 = "#3"\MessageBreak
+        (source = #2, FontIndex = #4).\MessageBreak
+        Run `pixi run line-spacing`, then compile again.%
+      }%
+    \fi
+  }%
+}
+
+\newcommand{\ntu@baseline@zh}{23.400000000000}
+\newcommand{\ntu@baseline@en}{27.597656250000}
+
+\newcommand{\ntu@fontspacing@apply}[1]{%
+  \fontsize{12}{#1}\selectfont
+}
+
+\newcommand{\ntu@fontspacing@applybody}{%
+  \ifthenelse{\equal{\ntu@language}{chinese}}
+    {\ntu@fontspacing@apply{\ntu@baseline@zh}}
+    {\ntu@fontspacing@apply{\ntu@baseline@en}}%
+}
+
+% Apply a face after \ntu@font@set has decided which resolution branch won.
+\newcommand{\ntu@font@applyresolved}[5]{%
+  \ifthenelse{\equal{#2}{file}}{%
+    \ifthenelse{\equal{#5}{}}
+      {\edef\ntu@font@args{Path = #3}}
+      {\edef\ntu@font@args{Path = #3, #5}}%
+    \expandafter#1\expandafter[\ntu@font@args]{#4}%
+  }{%
+    \ifthenelse{\equal{#2}{family}}{%
+      \edef\ntu@font@args{#5}%
+      \expandafter#1\expandafter[\ntu@font@args]{#4}%
+    }{}%
+  }%
+}
+
+% \ntu@font@set{<key>}{<setter>}{<directory>}{<font>}{<options>}{<source macro>}
 %
 % <font> is a file in <directory> or a font family installed on the system, and
 % the file wins. A family name is checked with \IfFontExistsTF, which unlike
 % fontconfig does not answer with a metric-compatible substitute.
-\newcommand{\ntu@font@set}[5]{%
+\newcommand{\ntu@font@set}[6]{%
+  \def#6{missing}%
   \ifthenelse{\equal{#4}{}}{%
     \ntu@error{%
       #1 is empty. Name a font file in #3, or a font family\MessageBreak
@@ -726,14 +830,10 @@
     }%
   }{%
     \IfFileExists{#3#4}{%
-      \ifthenelse{\equal{#5}{}}
-        {\edef\ntu@font@args{Path = #3}}
-        {\edef\ntu@font@args{Path = #3, #5}}%
-      \expandafter#2\expandafter[\ntu@font@args]{#4}%
+      \def#6{file}%
     }{%
       \IfFontExistsTF{#4}{%
-        \edef\ntu@font@args{#5}%
-        \expandafter#2\expandafter[\ntu@font@args]{#4}%
+        \def#6{family}%
       }{%
         \ntu@error{%
           #1 = "#4" was not found. It is neither a file in\MessageBreak
@@ -743,6 +843,7 @@
       }%
     }%
   }%
+  \ntu@font@applyresolved{#2}{#6}{#3}{#4}{#5}%
 }
 
 \define@key{ntu@font}{engfont}{\def\ntu@engfont{#1}}
@@ -756,14 +857,27 @@
 % The CJK monospaced face is the CJK face, so CJK inside \texttt and code blocks
 % does not fall back to one that cannot set it.
 \newcommand{\ntufontsetup}[1]{%
+  \def\ntu@baseline@zh{23.400000000000}%
+  \def\ntu@baseline@en{27.597656250000}%
   \def\ntu@engfont{}%
   \def\ntu@engfontoptions{}%
   \def\ntu@cjkfont{}%
   \def\ntu@cjkfontoptions{}%
   \setkeys{ntu@font}{#1}%
-  \ntu@font@set{engfont}{\setmainfont}{\ntu@path@font}{\ntu@engfont}{\ntu@engfontoptions}%
-  \ntu@font@set{cjkfont}{\setCJKmainfont}{\ntu@path@cjkfont}{\ntu@cjkfont}{\ntu@cjkfontoptions}%
-  \ntu@font@set{cjkfont}{\setCJKmonofont}{\ntu@path@cjkfont}{\ntu@cjkfont}{\ntu@cjkfontoptions}%
+  \ntu@font@set{engfont}{\setmainfont}{\ntu@path@font}{\ntu@engfont}%
+    {\ntu@engfontoptions}\ntu@engfontsource
+  \ntu@font@set{cjkfont}{\setCJKmainfont}{\ntu@path@cjkfont}{\ntu@cjkfont}%
+    {\ntu@cjkfontoptions}\ntu@cjkfontsource
+  \ntu@font@applyresolved{\setCJKmonofont}{\ntu@cjkfontsource}%
+    {\ntu@path@cjkfont}{\ntu@cjkfont}{\ntu@cjkfontoptions}%
+  \expandafter\ntu@fontspacing@findindex\expandafter{\ntu@engfontoptions}%
+  \edef\ntu@engfontindex{\ntu@fontspacing@index}%
+  \expandafter\ntu@fontspacing@findindex\expandafter{\ntu@cjkfontoptions}%
+  \edef\ntu@cjkfontindex{\ntu@fontspacing@index}%
+  \ntu@fontspacing@get
+    {engfont}{\ntu@engfontsource}{\ntu@engfont}{\ntu@engfontindex}{\ntu@baseline@en}%
+  \ntu@fontspacing@get
+    {cjkfont}{\ntu@cjkfontsource}{\ntu@cjkfont}{\ntu@cjkfontindex}{\ntu@baseline@zh}%
 }
 
 % [顏色設定]
@@ -829,13 +943,13 @@
 
 % \titlecontents{標題名稱}[左間距]{標題格式}{標題內容}{無序號標題}{指引線與頁碼}[下間距]
 \titlecontents{chapter}[0em]                                % 修改目錄樣式
-{\addvspace{0.5em}\normalsize\bfseries\protect}
+{\addvspace{0.5em}\ntu@fontspacing@applybody\bfseries\protect}
 {\fboxrule=0pt\fboxsep=0pt\framebox[\ntu@tocchaptersize][l]{\ntu@titlechaptertoc}}
 {}
 {\hfill\contentspage}
 
-\setlength{\cftbeforesecskip}{8pt}                          % 修改目錄間距
-\setlength{\cftbeforesubsecskip}{8pt}
+\setlength{\cftbeforesecskip}{4pt}                          % 修改目錄間距
+\setlength{\cftbeforesubsecskip}{4pt}
 
 \setcounter{tocdepth}{3}                                    % 設定目錄深度
 \setcounter{secnumdepth}{3}                                 % 設定編號深度
@@ -1235,7 +1349,7 @@
   \cleardoublepage
   \ntu@setgeometry{\ntu@geometry@main}
   \pagenumbering{arabic}
-  \fontsize{12}{18}\selectfont
+  \ntu@fontspacing@applybody
 }
 
 % [參考文獻]
@@ -1289,14 +1403,15 @@
 \newenvironment{acknowledgement}{
   \chapter*{\centering \ntu@acknowledgement}
   \addcontentsline{toc}{chapter}{\ntu@acknowledgement}
-  \fontsize{12}{18}\selectfont
+  \ntu@fontspacing@applybody
 }
 
 % [摘要環境]
 % Abstract Environment
 %
+% Each required abstract uses the computed baseline for its own language.
 \renewenvironment{abstract}{
-  \fontsize{12}{18}\selectfont
+  \ntu@fontspacing@apply{\ntu@baseline@zh}
   \chapter*{\centering \ntu@abstract@zh}
   \addcontentsline{toc}{chapter}{\ntu@abstract@zh}
 }{
@@ -1306,7 +1421,7 @@
 }
 
 \newenvironment{abstract*}{
-  \fontsize{12}{24}\selectfont
+  \ntu@fontspacing@apply{\ntu@baseline@en}
   \chapter*{\centering \ntu@abstract@en}
   \addcontentsline{toc}{chapter}{\ntu@abstract@en}
 }{
@@ -1324,17 +1439,15 @@
 %
 \ifthenelse{\equal{\ntu@doi}{true}}{\insertdoi{\ntu@DOI}}{}
 
-% 設定行距
-% 格式規範要求中文撰寫用 1.5 倍行距（1.2），英文撰寫用 2.0 倍行距（1.6），
-% 故此處依 language 選項決定。要改用其他行距，在 main.tex 的 \documentclass
-% 之後呼叫 \setstretch 即可覆寫。
-% The format rules ask for 1.5 line spacing in a Chinese thesis and double
-% spacing in an English one, so the language option picks it. A \setstretch in
-% main.tex after \documentclass still overrides this.
-\ifthenelse{\equal{\ntu@language}{chinese}}{
-  \setstretch{1.2}
-}{
-  \setstretch{1.6}
+% Font selection happens in the preamble. Apply the body's exact baseline after
+% LaTeX has finished its begin-document font initialization; abstracts select
+% their own language above. biblatex resets its entries to \normalsize, so its
+% font hook must restore the same 12 pt baseline explicitly.
+\AtBeginDocument{%
+  \ntu@fontspacing@applybody
+  \@ifpackageloaded{biblatex}{%
+    \renewcommand*{\bibfont}{\normalfont\ntu@fontspacing@applybody}%
+  }{}%
 }
 
 % 中文化

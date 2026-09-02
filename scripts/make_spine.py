@@ -18,7 +18,6 @@ import logging
 import math
 import os
 import re
-import subprocess
 import sys
 import zipfile
 from dataclasses import dataclass
@@ -157,6 +156,12 @@ from thesis_metadata import (  # noqa: E402
     parse_keyval_command,
     parse_ntusetup,
 )
+from font_files import (  # noqa: E402
+    FontFile,
+    FontResolutionError,
+    font_names,
+    resolve_font,
+)
 
 # 「撰」 follows the author's name after an ideographic space, as on the form.
 AUTHOR_SUFFIX = "　撰"
@@ -260,97 +265,6 @@ def read_spine_text(root: Path) -> SpineText:
     )
 
 
-def reduced(value: str) -> str:
-    """A font name with the spacing and punctuation that never matter taken out.
-
-    Word characters of every script are kept. Reducing to ASCII would leave a
-    CJK family name empty, which makes every one of them equal to every other:
-    standing 標楷體 next to 新細明體 would be a match rather than a mismatch.
-    """
-    return re.sub(r"[\W_]+", "", value.lower())
-
-
-def same_font(name: str, candidate: str) -> bool:
-    return reduced(name) == reduced(candidate)
-
-
-@dataclass(frozen=True)
-class FontFile:
-    """A face on disk. A .ttc holds several, so the index travels with the path."""
-
-    path: Path
-    index: int = 0
-
-    @property
-    def name(self) -> str:
-        return self.path.name if not self.index else f"{self.path.name}#{self.index}"
-
-    def open(self, **kwargs) -> TTFont:
-        return TTFont(self.path, fontNumber=self.index, **kwargs)
-
-
-# The name table entries a face answers to: 1 family, 4 full, 6 PostScript, and
-# 16 the typographic family. A family with more than the four styles the legacy
-# grouping allows splits itself across several ID 1 names -- STIX Two Text
-# Medium is its own ID 1 family, with ID 16 saying it is really STIX Two Text --
-# and the platform resolves the typographic name, so it has to be matched too.
-# ID 1 stays first: font_names(...)[0] is the name the spine letters with.
-FONT_NAME_IDS = (1, 4, 6, 16)
-
-
-def font_names(font: FontFile) -> tuple[str, ...]:
-    """Every name the face answers to, its localized ones included.
-
-    A face carries one record per name and language, and cjkfont may be written
-    as any of them: TW-Kai calls itself 全字庫正楷體 in Chinese, and fontconfig
-    answers to both, so a lookup that read only the preferred name would reject
-    the very font the thesis builds with. The preferred names come first, so
-    font_names(...)[0] is still the family name to letter the spine with.
-    """
-    try:
-        with font.open(lazy=True) as opened:
-            table = opened["name"]
-            found = [table.getDebugName(identifier) for identifier in FONT_NAME_IDS]
-            # backslashreplace, as getDebugName itself uses: one malformed record
-            # should cost that record, not every name the face has.
-            found += [
-                record.toUnicode(errors="backslashreplace")
-                for record in table.names
-                if record.nameID in FONT_NAME_IDS
-            ]
-    except Exception:  # noqa: BLE001 - fontTools raises a different type per defect
-        logging.debug("Not a readable font: %s", font.name)
-        return ()
-    names: list[str] = []
-    for name in found:
-        if name and name not in names:
-            names.append(name)
-    return tuple(names)
-
-
-def matched_font(family: str) -> FontFile | None:
-    """The file fontconfig answers a request for `family` with.
-
-    `fc-match`, not `fc-list`: the build asks fontconfig to match a family and
-    is given one face, while a listing is in no particular order and holds
-    every style the family has. Fontconfig always answers something, so the
-    caller still has to ask the file whether it is the face wanted.
-    """
-    try:
-        matched = subprocess.run(
-            ["fc-match", "--format=%{file}\t%{index}\n", f"{family}:style=Regular"],
-            capture_output=True,
-            text=True,
-        )
-    except OSError:
-        logging.debug("No fc-match on this machine, so only the shipped faces are known.")
-        return None
-    path, _, index = matched.stdout.strip().partition("\t")
-    if matched.returncode != 0 or not path:
-        return None
-    return FontFile(Path(path), int(index) if index.isdigit() else 0)
-
-
 # The two places ntuthesis.cls looks for cjkfont, in its order. Both sides have
 # to change together.
 CJK_DIRECTORY = "fonts/chinese"
@@ -383,18 +297,15 @@ def cjk_font_name(root: Path) -> str:
 def locate_font(root: Path) -> FontFile:
     """The file the class sets Chinese in, found the way the class finds it."""
     name, index = cjk_font_settings(root)
-    path = root / CJK_DIRECTORY / name
-    if path.is_file():
-        return FontFile(path, 0 if index is None else index)
-    candidate = matched_font(name)
-    if candidate and any(same_font(name, found) for found in font_names(candidate)):
-        return candidate if index is None else FontFile(candidate.path, index)
-    raise CollectionError(
-        f"main.tex sets cjkfont = {name}, which is neither a file in "
-        f"{CJK_DIRECTORY}/ nor a font family installed on this machine. Install "
-        "it, or name a Chinese face that ships with the template. See "
-        "fonts/README.md."
-    )
+    try:
+        return resolve_font(root, CJK_DIRECTORY, name, index)
+    except FontResolutionError as error:
+        raise CollectionError(
+            f"main.tex sets cjkfont = {name}, which is neither a file in "
+            f"{CJK_DIRECTORY}/ nor a font family installed on this machine. Install "
+            "it, or name a Chinese face that ships with the template. See "
+            "fonts/README.md."
+        ) from error
 
 
 # The faces this template redistributes. Their licences (政府資料開放授權條款-1.0,

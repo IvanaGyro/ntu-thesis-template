@@ -47,8 +47,11 @@ A font is looked for in two places, and the first hit wins:
 2. **A font family installed on the machine**, Overleaf's image included:
    `Times New Roman`, `BiauKai`, `AR PL KaitiM Big5`.
 
-Neither matching stops the build with an error. The options are passed to
-`fontspec` untouched, so anything `fontspec` accepts can go in them.
+If neither matches, the build stops with an error. Most options are passed to
+`fontspec` untouched. Options that replace or scale the upright face, including
+variable-font axis and raw-feature options, are unsupported because they would
+make the generated line-spacing value inaccurate; the class names the offending
+option if one is used.
 
 **Bold and italic depend on which of the two you used.** A family name is
 resolved by the operating system's font manager, which knows every weight and
@@ -82,6 +85,22 @@ reaching your PDF.
 The default `engfont` is `Times New Roman`, which Overleaf provides. If your
 local system does not have it, use `Tinos-Regular.ttf` with its style files in
 `engfontoptions` instead.
+
+## Line spacing
+
+Line-spacing values for Times New Roman, 標楷體, and every font shipped here are
+included. After choosing another font in `\ntufontsetup`, run this once from the
+project root when the build asks:
+
+```bash
+pixi run line-spacing
+```
+
+The task reads the font settings in `main.tex` and writes the user-specific
+`ntu-line-spacing.tex`, which the class loads after the committed
+`ntu-line-spacing-default.tex`. Run it again after changing either font or its
+`FontIndex`. The user-specific file is ignored by Git; keep it locally and
+upload it with the rest of the project when building on Overleaf.
 
 ## Using the exact fonts NTU names
 
