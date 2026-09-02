@@ -54,6 +54,18 @@ class FormulaTests(unittest.TestCase):
             (Fraction(13, 10), "east-asian"),
         )
 
+    def test_east_asian_branch_scales_non_em_win_height(self) -> None:
+        metrics = replace(
+            LATIN,
+            win_ascent=900,
+            win_descent=300,
+            code_page_range1=1 << 20,
+        )
+        self.assertEqual(
+            spacing.single_line_height(metrics),
+            (Fraction(39, 25), "east-asian"),
+        )
+
     def test_east_asian_unicode_fallback(self) -> None:
         # OS/2 Unicode-range bit 59 is bit 27 of ulUnicodeRange2.
         metrics = replace(LATIN, unicode_ranges=(0, 1 << (59 - 32), 0, 0))
